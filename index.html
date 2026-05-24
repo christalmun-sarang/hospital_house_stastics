@@ -59,6 +59,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
+window.addEventListener('load', function(){
 firebase.initializeApp({databaseURL:"https://notice-hanriver-default-rtdb.firebaseio.com/"});
 const db=firebase.database();
 
@@ -255,6 +256,7 @@ if(saved&&acct(saved)){
 } else {
   showLogin();
 }
+}); // end window.addEventListener
 </script>
 </body>
 </html>
