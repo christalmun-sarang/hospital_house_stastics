@@ -59,8 +59,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
-firebase.initializeApp({ databaseURL:"https://notice-hanriver-default-rtdb.firebaseio.com/" });
-const db = firebase.database();
+firebase.initializeApp({databaseURL:"https://notice-hanriver-default-rtdb.firebaseio.com/"});
+const db=firebase.database();
 
 const ACCOUNTS=[
   {id:'원장', pw:'ped1234',    c:'c0'},
@@ -71,30 +71,29 @@ const ACCOUNTS=[
 ];
 
 let me=null, peer=null, selId=null;
-
-// 채팅 구독 하나만 유지
-let activeChatRef=null;
-
-// 안읽음 카운트 (메모리)
-// unread[uid] = count
-let unread={};
+let unread={};         // uid -> count (메모리)
+let currentRef=null;   // 현재 채팅 구독 ref (단 하나)
 
 function acct(id){return ACCOUNTS.find(a=>a.id===id);}
 function mkey(a,b){return [a,b].sort().join('__');}
 function esc(t){return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function tstr(ts){return new Date(ts).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});}
 function dstr(ts){return new Date(ts).toLocaleDateString('ko-KR',{month:'long',day:'numeric'});}
-function lrKey(a,b){return 'lr_'+[a,b].sort().join('_');}
-function getLR(a,b){return parseInt(localStorage.getItem(lrKey(a,b))||'0');}
-function setLR(a,b){localStorage.setItem(lrKey(a,b),String(Date.now()));}
+function lrKey(uid){return 'lr2_'+me+'_'+uid;}
+function getLR(uid){return parseInt(localStorage.getItem(lrKey(uid))||'0');}
+function setLR(uid){localStorage.setItem(lrKey(uid),String(Date.now()));}
+
+// 채팅 구독 해제
+function stopChat(){
+  if(currentRef){currentRef.off('value');currentRef=null;}
+}
 
 /* ── 로그인 ── */
 function showLogin(err){
-  // 채팅 구독 해제
-  if(activeChatRef){activeChatRef.off();activeChatRef=null;}
+  stopChat();
   document.getElementById('root').innerHTML=`
   <div class="screen"><div class="login-card">
-    <div style="font-size:32px;margin-bottom:12px;">💬</div>
+    <div style="font-size:36px;margin-bottom:12px;">💬</div>
     <div class="login-title">사랑소아청소년과 메신저</div>
     <div class="login-sub">소속을 선택하고 비밀번호를 입력하세요</div>
     <div class="user-btns">
@@ -109,75 +108,40 @@ function showLogin(err){
   </div></div>`;
   if(selId) setTimeout(()=>document.getElementById('pw')?.focus(),50);
 }
-
 function pickUser(id){selId=id;showLogin();setTimeout(()=>document.getElementById('pw')?.focus(),50);}
-
 function doLogin(){
   if(!selId){showLogin('소속을 선택해주세요.');return;}
   const pw=document.getElementById('pw')?.value||'';
   const a=acct(selId);
   if(!a||pw!==a.pw){showLogin('비밀번호가 맞지 않습니다.');return;}
-  me=selId;localStorage.setItem('sarang_me',me);
-  unread={};
-  peer=null;
-  startAllListeners();
+  me=selId; localStorage.setItem('sarang_me',me);
+  unread={}; peer=null;
+  // 안읽음 초기 계산 (once, 구독 없음)
+  initUnread(()=>renderApp());
 }
-
 function doLogout(){
-  if(activeChatRef){activeChatRef.off();activeChatRef=null;}
+  stopChat();
   me=null;peer=null;unread={};
   localStorage.removeItem('sarang_me');
   showLogin();
 }
 
-/* ── 핵심: 전체 메시지 하나의 리스너로 관리 ── */
-// 각 대화방 메시지를 메모리에 캐시
-let msgCache={}; // mkey -> [{from,text,ts}]
-
-function startAllListeners(){
-  // 내가 참여하는 모든 대화방 구독 (읽음 추적용)
+// 안읽음 초기 계산 - once()만 사용, 구독 없음
+function initUnread(cb){
   const others=ACCOUNTS.filter(a=>a.id!==me);
+  let done=0;
   for(const u of others){
     const k=mkey(me,u.id);
-    const lr=getLR(me,u.id);
-    // 각 대화방의 새 메시지만 감지 (child_added)
-    db.ref('msgs/'+k).orderByChild('ts').startAt(lr+1).on('child_added', snap=>{
-      const m=snap.val();
-      // 캐시에 추가
-      if(!msgCache[k]) msgCache[k]=[];
-      // 중복 방지
-      if(!msgCache[k].find(x=>x.ts===m.ts&&x.from===m.from&&x.text===m.text)){
-        msgCache[k].push(m);
-        msgCache[k].sort((a,b)=>a.ts-b.ts);
-      }
-      // 안읽음 카운트
-      if(m.from===u.id && peer!==u.id){
-        unread[u.id]=(unread[u.id]||0)+1;
-        updateBadge(u.id);
-      }
-      // 현재 열린 채팅방이면 렌더
-      if(peer===u.id) renderMsgs();
-    });
-    // 기존 메시지 초기 로드
-    db.ref('msgs/'+k).orderByChild('ts').once('value', snap=>{
-      const arr=[];
-      snap.forEach(ch=>arr.push(ch.val()));
-      msgCache[k]=arr;
-      // 안읽음 계산
-      const myLR=getLR(me,u.id);
-      unread[u.id]=arr.filter(m=>m.from===u.id&&m.ts>myLR).length;
-      updateBadge(u.id);
-      if(peer===u.id) renderMsgs();
+    const lr=getLR(u.id);
+    db.ref('msgs/'+k).orderByChild('ts').once('value',snap=>{
+      let c=0;
+      snap.forEach(ch=>{const m=ch.val();if(m.from===u.id&&m.ts>lr)c++;});
+      unread[u.id]=c;
+      done++;
+      if(done===others.length) cb();
     });
   }
-  renderApp();
-}
-
-function updateBadge(uid){
-  const el=document.getElementById('bdg_'+uid);
-  if(!el) return;
-  const c=unread[uid]||0;
-  el.innerHTML=c>0?`<span class="badge">${c}</span>`:'';
+  if(others.length===0) cb();
 }
 
 /* ── 앱 화면 ── */
@@ -196,7 +160,7 @@ function renderApp(){
       <div class="av ${acct(peer).c}">${peer.slice(0,2)}</div>
       <div class="chat-top-name">${peer}</div>
     </div>
-    <div class="msgs" id="msglist"></div>
+    <div class="msgs" id="msglist"><div class="empty"><span>불러오는 중...</span></div></div>
     <div class="input-row">
       <input id="minput" type="text" placeholder="메시지 입력..." autocomplete="off"
         onkeydown="if(event.key==='Enter')sendMsg()"/>
@@ -224,16 +188,30 @@ function renderApp(){
     </div>`;
 
   if(peer){
-    renderMsgs();
+    startChatListener();
     setTimeout(()=>document.getElementById('minput')?.focus(),100);
   }
 }
 
-function renderMsgs(){
+// 채팅 구독 - value 하나만, limitToLast 없음
+function startChatListener(){
+  stopChat(); // 기존 구독 반드시 해제
+  const k=mkey(me,peer);
+  currentRef=db.ref('msgs/'+k).orderByChild('ts');
+  currentRef.on('value',snap=>{
+    const msgs=[];
+    snap.forEach(ch=>msgs.push(ch.val()));
+    renderMsgs(msgs);
+  });
+  setLR(peer);
+  unread[peer]=0;
+  const bdg=document.getElementById('bdg_'+peer);
+  if(bdg) bdg.innerHTML='';
+}
+
+function renderMsgs(msgs){
   const list=document.getElementById('msglist');
   if(!list) return;
-  const k=mkey(me,peer);
-  const msgs=msgCache[k]||[];
   const pA=acct(peer);
   let html='',lastD='';
   for(const m of msgs){
@@ -254,9 +232,8 @@ function renderMsgs(){
 }
 
 function selectPeer(uid){
+  stopChat();
   peer=uid;
-  unread[uid]=0;
-  setLR(me,uid);
   renderApp();
 }
 
@@ -272,8 +249,12 @@ function sendMsg(){
 
 /* ── 초기화 ── */
 const saved=localStorage.getItem('sarang_me');
-if(saved&&acct(saved)){me=saved;unread={};startAllListeners();}
-else showLogin();
+if(saved&&acct(saved)){
+  me=saved; unread={};
+  initUnread(()=>renderApp());
+} else {
+  showLogin();
+}
 </script>
 </body>
 </html>
