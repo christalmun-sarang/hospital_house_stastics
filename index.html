@@ -9,7 +9,6 @@
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f6fa;height:100vh;overflow:hidden;}
 .screen{height:100vh;display:flex;align-items:center;justify-content:center;}
 .login-card{background:#fff;border-radius:16px;padding:32px 28px;width:320px;box-shadow:0 4px 24px rgba(0,0,0,0.10);display:flex;flex-direction:column;align-items:center;}
-.logo{width:56px;height:56px;border-radius:50%;background:#EEF0FF;display:flex;align-items:center;justify-content:center;margin-bottom:14px;}
 .login-title{font-size:17px;font-weight:700;color:#1a1a2e;margin-bottom:4px;}
 .login-sub{font-size:12px;color:#888;margin-bottom:20px;text-align:center;}
 .user-btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:16px;}
@@ -57,56 +56,45 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </head>
 <body>
 <div id="root"></div>
-
-<script>
-// Firebase SDK (compat 버전 - 안정적)
-</script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
-firebase.initializeApp({ databaseURL: "https://notice-hanriver-default-rtdb.firebaseio.com/" });
+firebase.initializeApp({ databaseURL:"https://notice-hanriver-default-rtdb.firebaseio.com/" });
 const db = firebase.database();
 
-const ACCOUNTS = [
-  { id:'원장',  pw:'ped1234',    c:'c0' },
-  { id:'약국',  pw:'pharma1234', c:'c1' },
-  { id:'접수1', pw:'js10000',    c:'c2' },
-  { id:'접수2', pw:'js20000',    c:'c3' },
-  { id:'NAM',  pw:'han1234',    c:'c4' },
+const ACCOUNTS=[
+  {id:'원장', pw:'ped1234',    c:'c0'},
+  {id:'약국', pw:'pharma1234', c:'c1'},
+  {id:'접수1',pw:'js10000',    c:'c2'},
+  {id:'접수2',pw:'js20000',    c:'c3'},
+  {id:'NAM', pw:'han1234',    c:'c4'},
 ];
 
 let me=null, peer=null, selId=null;
-let chatListener=null, chatRefObj=null;
-let badgeListeners={};
 
-function acct(id){ return ACCOUNTS.find(a=>a.id===id); }
-function mkey(a,b){ return [a,b].sort().join('__'); }
-function esc(t){ return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function tstr(ts){ return new Date(ts).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}); }
-function dstr(ts){ return new Date(ts).toLocaleDateString('ko-KR',{month:'long',day:'numeric'}); }
-function getLR(a,b){ return parseInt(localStorage.getItem('lr_'+[a,b].sort().join('_'))||'0'); }
-function setLR(a,b){ localStorage.setItem('lr_'+[a,b].sort().join('_'), String(Date.now())); }
+// 채팅 구독 하나만 유지
+let activeChatRef=null;
 
-function stopChat(){
-  if(chatRefObj && chatListener){
-    chatRefObj.off('value', chatListener);
-    chatRefObj=null; chatListener=null;
-  }
-}
-function stopBadges(){
-  for(const [uid,{ref,fn}] of Object.entries(badgeListeners)){
-    ref.off('value',fn);
-  }
-  badgeListeners={};
-}
+// 안읽음 카운트 (메모리)
+// unread[uid] = count
+let unread={};
+
+function acct(id){return ACCOUNTS.find(a=>a.id===id);}
+function mkey(a,b){return [a,b].sort().join('__');}
+function esc(t){return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function tstr(ts){return new Date(ts).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});}
+function dstr(ts){return new Date(ts).toLocaleDateString('ko-KR',{month:'long',day:'numeric'});}
+function lrKey(a,b){return 'lr_'+[a,b].sort().join('_');}
+function getLR(a,b){return parseInt(localStorage.getItem(lrKey(a,b))||'0');}
+function setLR(a,b){localStorage.setItem(lrKey(a,b),String(Date.now()));}
 
 /* ── 로그인 ── */
 function showLogin(err){
-  stopChat(); stopBadges();
+  // 채팅 구독 해제
+  if(activeChatRef){activeChatRef.off();activeChatRef=null;}
   document.getElementById('root').innerHTML=`
   <div class="screen"><div class="login-card">
-    <div class="logo"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#534AB7" stroke-width="2">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+    <div style="font-size:32px;margin-bottom:12px;">💬</div>
     <div class="login-title">사랑소아청소년과 메신저</div>
     <div class="login-sub">소속을 선택하고 비밀번호를 입력하세요</div>
     <div class="user-btns">
@@ -122,40 +110,88 @@ function showLogin(err){
   if(selId) setTimeout(()=>document.getElementById('pw')?.focus(),50);
 }
 
-function pickUser(id){
-  selId=id; showLogin();
-  setTimeout(()=>document.getElementById('pw')?.focus(),50);
-}
+function pickUser(id){selId=id;showLogin();setTimeout(()=>document.getElementById('pw')?.focus(),50);}
 
 function doLogin(){
-  if(!selId){ showLogin('소속을 선택해주세요.'); return; }
+  if(!selId){showLogin('소속을 선택해주세요.');return;}
   const pw=document.getElementById('pw')?.value||'';
   const a=acct(selId);
-  if(!a||pw!==a.pw){ showLogin('비밀번호가 맞지 않습니다.'); return; }
-  me=selId; localStorage.setItem('sarang_me',me);
-  peer=null; renderApp();
+  if(!a||pw!==a.pw){showLogin('비밀번호가 맞지 않습니다.');return;}
+  me=selId;localStorage.setItem('sarang_me',me);
+  unread={};
+  peer=null;
+  startAllListeners();
 }
 
 function doLogout(){
-  me=null; peer=null;
+  if(activeChatRef){activeChatRef.off();activeChatRef=null;}
+  me=null;peer=null;unread={};
   localStorage.removeItem('sarang_me');
   showLogin();
 }
 
-/* ── 앱 ── */
+/* ── 핵심: 전체 메시지 하나의 리스너로 관리 ── */
+// 각 대화방 메시지를 메모리에 캐시
+let msgCache={}; // mkey -> [{from,text,ts}]
+
+function startAllListeners(){
+  // 내가 참여하는 모든 대화방 구독 (읽음 추적용)
+  const others=ACCOUNTS.filter(a=>a.id!==me);
+  for(const u of others){
+    const k=mkey(me,u.id);
+    const lr=getLR(me,u.id);
+    // 각 대화방의 새 메시지만 감지 (child_added)
+    db.ref('msgs/'+k).orderByChild('ts').startAt(lr+1).on('child_added', snap=>{
+      const m=snap.val();
+      // 캐시에 추가
+      if(!msgCache[k]) msgCache[k]=[];
+      // 중복 방지
+      if(!msgCache[k].find(x=>x.ts===m.ts&&x.from===m.from&&x.text===m.text)){
+        msgCache[k].push(m);
+        msgCache[k].sort((a,b)=>a.ts-b.ts);
+      }
+      // 안읽음 카운트
+      if(m.from===u.id && peer!==u.id){
+        unread[u.id]=(unread[u.id]||0)+1;
+        updateBadge(u.id);
+      }
+      // 현재 열린 채팅방이면 렌더
+      if(peer===u.id) renderMsgs();
+    });
+    // 기존 메시지 초기 로드
+    db.ref('msgs/'+k).orderByChild('ts').once('value', snap=>{
+      const arr=[];
+      snap.forEach(ch=>arr.push(ch.val()));
+      msgCache[k]=arr;
+      // 안읽음 계산
+      const myLR=getLR(me,u.id);
+      unread[u.id]=arr.filter(m=>m.from===u.id&&m.ts>myLR).length;
+      updateBadge(u.id);
+      if(peer===u.id) renderMsgs();
+    });
+  }
+  renderApp();
+}
+
+function updateBadge(uid){
+  const el=document.getElementById('bdg_'+uid);
+  if(!el) return;
+  const c=unread[uid]||0;
+  el.innerHTML=c>0?`<span class="badge">${c}</span>`:'';
+}
+
+/* ── 앱 화면 ── */
 function renderApp(){
-  stopChat(); stopBadges();
   const myA=acct(me);
   const others=ACCOUNTS.filter(a=>a.id!==me);
-
   const sideHtml=others.map(u=>`
     <div class="uitem${peer===u.id?' active':''}" onclick="selectPeer('${u.id}')">
       <div class="av ${u.c}">${u.id.slice(0,2)}</div>
       <div class="u-name">${u.id}</div>
-      <span id="bdg_${u.id}"></span>
+      <span id="bdg_${u.id}">${(unread[u.id]||0)>0?`<span class="badge">${unread[u.id]}</span>`:''}</span>
     </div>`).join('');
 
-  const chatHtml = peer ? `
+  const chatHtml=peer?`
     <div class="chat-top">
       <div class="av ${acct(peer).c}">${peer.slice(0,2)}</div>
       <div class="chat-top-name">${peer}</div>
@@ -165,10 +201,12 @@ function renderApp(){
       <input id="minput" type="text" placeholder="메시지 입력..." autocomplete="off"
         onkeydown="if(event.key==='Enter')sendMsg()"/>
       <button class="sbtn" onclick="sendMsg()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9 22 2Z"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+          <path d="M22 2L11 13M22 2L15 22 11 13 2 9 22 2Z"/>
+        </svg>
       </button>
     </div>`
-  : `<div class="empty">💬<span>왼쪽에서 대화 상대를 선택하세요</span></div>`;
+  :`<div class="empty">💬<span>왼쪽에서 대화 상대를 선택하세요</span></div>`;
 
   document.getElementById('root').innerHTML=`
     <div class="app">
@@ -185,40 +223,22 @@ function renderApp(){
       <div class="chat-area">${chatHtml}</div>
     </div>`;
 
-  // 뱃지 구독
-  for(const u of others){
-    const lr=getLR(me,u.id);
-    const bref=db.ref('msgs/'+mkey(me,u.id));
-    const fn=bref.on('value', snap=>{
-      let c=0;
-      snap.forEach(ch=>{ if(ch.val().from===u.id && ch.val().ts>lr) c++; });
-      const el=document.getElementById('bdg_'+u.id);
-      if(el) el.innerHTML=c>0?`<span class="badge">${c}</span>`:'';
-    });
-    badgeListeners[u.id]={ref:bref,fn};
-  }
-
-  // 채팅 구독
   if(peer){
-    chatRefObj = db.ref('msgs/'+mkey(me,peer)).orderByChild('ts').limitToLast(300);
-    chatListener = chatRefObj.on('value', snap=>{
-      const msgs=[];
-      snap.forEach(ch=>msgs.push(ch.val()));
-      renderMsgs(msgs);
-    });
-    setLR(me,peer);
+    renderMsgs();
     setTimeout(()=>document.getElementById('minput')?.focus(),100);
   }
 }
 
-function renderMsgs(msgs){
+function renderMsgs(){
   const list=document.getElementById('msglist');
   if(!list) return;
+  const k=mkey(me,peer);
+  const msgs=msgCache[k]||[];
   const pA=acct(peer);
-  let html='', lastD='';
+  let html='',lastD='';
   for(const m of msgs){
     const d=dstr(m.ts);
-    if(d!==lastD){ html+=`<div class="dsep">${d}</div>`; lastD=d; }
+    if(d!==lastD){html+=`<div class="dsep">${d}</div>`;lastD=d;}
     const mine=m.from===me;
     html+=`<div class="mrow${mine?' mine':''}">
       ${!mine?`<div class="av sm ${pA.c}">${peer.slice(0,2)}</div>`:''}
@@ -234,7 +254,10 @@ function renderMsgs(msgs){
 }
 
 function selectPeer(uid){
-  peer=uid; renderApp();
+  peer=uid;
+  unread[uid]=0;
+  setLR(me,uid);
+  renderApp();
 }
 
 function sendMsg(){
@@ -247,9 +270,9 @@ function sendMsg(){
   inp.focus();
 }
 
-// 초기화
+/* ── 초기화 ── */
 const saved=localStorage.getItem('sarang_me');
-if(saved&&acct(saved)){ me=saved; renderApp(); }
+if(saved&&acct(saved)){me=saved;unread={};startAllListeners();}
 else showLogin();
 </script>
 </body>
