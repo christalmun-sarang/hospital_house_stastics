@@ -59,34 +59,34 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
-window.addEventListener('load', function(){
 firebase.initializeApp({databaseURL:"https://notice-hanriver-default-rtdb.firebaseio.com/"});
-const db=firebase.database();
+const db = firebase.database();
 
-const ACCOUNTS=[
-  {id:'원장', pw:'ped1234',    c:'c0'},
-  {id:'약국', pw:'pharma1234', c:'c1'},
-  {id:'접수1',pw:'js10000',    c:'c2'},
-  {id:'접수2',pw:'js20000',    c:'c3'},
-  {id:'NAM', pw:'han1234',    c:'c4'},
+// ★ 계정 ID는 영문으로 — Firebase 경로에 한글 사용 금지
+const ACCOUNTS = [
+  {id:'wonjang', label:'원장', pw:'ped1234',    c:'c0'},
+  {id:'yakguk',  label:'약국', pw:'pharma1234', c:'c1'},
+  {id:'jesu1',   label:'접수1',pw:'js10000',    c:'c2'},
+  {id:'jesu2',   label:'접수2',pw:'js20000',    c:'c3'},
+  {id:'nam',     label:'NAM', pw:'han1234',    c:'c4'},
 ];
 
 let me=null, peer=null, selId=null;
-let unread={};         // uid -> count (메모리)
-let currentRef=null;   // 현재 채팅 구독 ref (단 하나)
+let unread={};
+let chatRef=null;
 
 function acct(id){return ACCOUNTS.find(a=>a.id===id);}
-function mkey(a,b){return [a,b].sort().join('__');}
+// ★ mkey: 항상 알파벳순 정렬 → 양쪽에서 동일한 키 보장
+function mkey(a,b){return [a,b].sort().join('_vs_');}
 function esc(t){return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function tstr(ts){return new Date(ts).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});}
 function dstr(ts){return new Date(ts).toLocaleDateString('ko-KR',{month:'long',day:'numeric'});}
-function lrKey(uid){return 'lr2_'+me+'_'+uid;}
+function lrKey(uid){return 'lr3_'+me+'_'+uid;}
 function getLR(uid){return parseInt(localStorage.getItem(lrKey(uid))||'0');}
 function setLR(uid){localStorage.setItem(lrKey(uid),String(Date.now()));}
 
-// 채팅 구독 해제
 function stopChat(){
-  if(currentRef){currentRef.off('value');currentRef=null;}
+  if(chatRef){chatRef.off('value');chatRef=null;}
 }
 
 /* ── 로그인 ── */
@@ -98,7 +98,7 @@ function showLogin(err){
     <div class="login-title">사랑소아청소년과 메신저</div>
     <div class="login-sub">소속을 선택하고 비밀번호를 입력하세요</div>
     <div class="user-btns">
-      ${ACCOUNTS.map(a=>`<button class="user-btn${selId===a.id?' sel':''}" onclick="pickUser('${a.id}')">${a.id}</button>`).join('')}
+      ${ACCOUNTS.map(a=>`<button class="user-btn${selId===a.id?' sel':''}" onclick="pickUser('${a.id}')">${a.label}</button>`).join('')}
     </div>
     <div class="pw-wrap">
       <input class="pw-input" id="pw" type="password" placeholder="비밀번호"
@@ -109,40 +109,51 @@ function showLogin(err){
   </div></div>`;
   if(selId) setTimeout(()=>document.getElementById('pw')?.focus(),50);
 }
-function pickUser(id){selId=id;showLogin();setTimeout(()=>document.getElementById('pw')?.focus(),50);}
+
+function pickUser(id){
+  selId=id;
+  document.querySelectorAll('.user-btn').forEach(b=>b.classList.toggle('sel', b.getAttribute('onclick').includes("'"+id+"'")));
+  setTimeout(()=>document.getElementById('pw')?.focus(),50);
+}
+
 function doLogin(){
   if(!selId){showLogin('소속을 선택해주세요.');return;}
   const pw=document.getElementById('pw')?.value||'';
   const a=acct(selId);
   if(!a||pw!==a.pw){showLogin('비밀번호가 맞지 않습니다.');return;}
-  me=selId; localStorage.setItem('sarang_me',me);
+  me=selId;
+  localStorage.setItem('sarang_me',me);
   unread={}; peer=null;
-  // 안읽음 초기 계산 (once, 구독 없음)
-  initUnread(()=>renderApp());
+  loadUnread(()=>renderApp());
 }
+
 function doLogout(){
   stopChat();
-  me=null;peer=null;unread={};
+  me=null; peer=null; unread={};
   localStorage.removeItem('sarang_me');
   showLogin();
 }
 
-// 안읽음 초기 계산 - once()만 사용, 구독 없음
-function initUnread(cb){
+// 안읽음 초기 계산 (once만, 구독 없음)
+function loadUnread(cb){
   const others=ACCOUNTS.filter(a=>a.id!==me);
+  if(others.length===0){cb();return;}
   let done=0;
-  for(const u of others){
+  others.forEach(u=>{
     const k=mkey(me,u.id);
     const lr=getLR(u.id);
-    db.ref('msgs/'+k).orderByChild('ts').once('value',snap=>{
+    db.ref('msgs/'+k).once('value',snap=>{
       let c=0;
-      snap.forEach(ch=>{const m=ch.val();if(m.from===u.id&&m.ts>lr)c++;});
+      snap.forEach(ch=>{
+        const m=ch.val();
+        // ★ val()이 객체인지 확인 (문자열로 저장된 이전 데이터 무시)
+        if(m && typeof m==='object' && m.from===u.id && m.ts>lr) c++;
+      });
       unread[u.id]=c;
       done++;
       if(done===others.length) cb();
     });
-  }
-  if(others.length===0) cb();
+  });
 }
 
 /* ── 앱 화면 ── */
@@ -151,20 +162,20 @@ function renderApp(){
   const others=ACCOUNTS.filter(a=>a.id!==me);
   const sideHtml=others.map(u=>`
     <div class="uitem${peer===u.id?' active':''}" onclick="selectPeer('${u.id}')">
-      <div class="av ${u.c}">${u.id.slice(0,2)}</div>
-      <div class="u-name">${u.id}</div>
+      <div class="av ${u.c}">${u.label.slice(0,2)}</div>
+      <div class="u-name">${u.label}</div>
       <span id="bdg_${u.id}">${(unread[u.id]||0)>0?`<span class="badge">${unread[u.id]}</span>`:''}</span>
     </div>`).join('');
 
   const chatHtml=peer?`
     <div class="chat-top">
-      <div class="av ${acct(peer).c}">${peer.slice(0,2)}</div>
-      <div class="chat-top-name">${peer}</div>
+      <div class="av ${acct(peer).c}">${acct(peer).label.slice(0,2)}</div>
+      <div class="chat-top-name">${acct(peer).label}</div>
     </div>
     <div class="msgs" id="msglist"><div class="empty"><span>불러오는 중...</span></div></div>
     <div class="input-row">
       <input id="minput" type="text" placeholder="메시지 입력..." autocomplete="off"
-        onkeyup="if(event.key==='Enter'&&!event.isComposing)sendMsg()"/>
+        onkeydown="if(event.key==='Enter')sendMsg()"/>
       <button class="sbtn" onclick="sendMsg()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
           <path d="M22 2L11 13M22 2L15 22 11 13 2 9 22 2Z"/>
@@ -178,8 +189,8 @@ function renderApp(){
       <div class="sidebar">
         <div class="sidebar-top">
           <div class="me-row">
-            <div class="av ${myA.c}">${me.slice(0,2)}</div>
-            <div class="me-name">${me}</div>
+            <div class="av ${myA.c}">${myA.label.slice(0,2)}</div>
+            <div class="me-name">${myA.label}</div>
             <button class="logout-btn" onclick="doLogout()">로그아웃</button>
           </div>
         </div>
@@ -194,14 +205,22 @@ function renderApp(){
   }
 }
 
-// 채팅 구독 - value 하나만, limitToLast 없음
 function startChatListener(){
-  stopChat(); // 기존 구독 반드시 해제
+  stopChat();
   const k=mkey(me,peer);
-  currentRef=db.ref('msgs/'+k).orderByChild('ts');
-  currentRef.on('value',snap=>{
+  // ★ orderByChild 없이 단순 ref.on('value') — 정렬은 클라이언트에서
+  chatRef=db.ref('msgs/'+k);
+  chatRef.on('value',snap=>{
     const msgs=[];
-    snap.forEach(ch=>msgs.push(ch.val()));
+    snap.forEach(ch=>{
+      const m=ch.val();
+      // ★ 올바른 객체 형태인지 검증
+      if(m && typeof m==='object' && m.from && m.text && m.ts){
+        msgs.push(m);
+      }
+    });
+    // ts 기준 정렬
+    msgs.sort((a,b)=>a.ts-b.ts);
     renderMsgs(msgs);
   });
   setLR(peer);
@@ -220,14 +239,14 @@ function renderMsgs(msgs){
     if(d!==lastD){html+=`<div class="dsep">${d}</div>`;lastD=d;}
     const mine=m.from===me;
     html+=`<div class="mrow${mine?' mine':''}">
-      ${!mine?`<div class="av sm ${pA.c}">${peer.slice(0,2)}</div>`:''}
+      ${!mine?`<div class="av sm ${pA.c}">${pA.label.slice(0,2)}</div>`:''}
       <div>
         <div class="mt" style="text-align:${mine?'right':'left'}">${tstr(m.ts)}</div>
         <div class="bubble ${mine?'m':'t'}">${esc(m.text)}</div>
       </div>
     </div>`;
   }
-  if(!html) html=`<div class="empty">💬<span>${peer}과(와) 대화를 시작하세요</span></div>`;
+  if(!html) html=`<div class="empty">💬<span>${pA.label}과(와) 대화를 시작하세요</span></div>`;
   list.innerHTML=html;
   list.scrollTop=list.scrollHeight;
 }
@@ -244,7 +263,9 @@ function sendMsg(){
   const text=inp.value.trim();
   if(!text) return;
   inp.value='';
-  db.ref('msgs/'+mkey(me,peer)).push({from:me,text,ts:Date.now()});
+  // ★ push()로 객체 저장 — 문자열이 아닌 {from, text, ts} 객체
+  const msgObj={from:me, text:text, ts:Date.now()};
+  db.ref('msgs/'+mkey(me,peer)).push(msgObj);
   inp.focus();
 }
 
@@ -252,11 +273,10 @@ function sendMsg(){
 const saved=localStorage.getItem('sarang_me');
 if(saved&&acct(saved)){
   me=saved; unread={};
-  initUnread(()=>renderApp());
+  loadUnread(()=>renderApp());
 } else {
   showLogin();
 }
-}); // end window.addEventListener
 </script>
 </body>
 </html>
