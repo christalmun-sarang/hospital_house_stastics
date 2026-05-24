@@ -1,264 +1,48 @@
 
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-.screen { height: 520px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-primary); }
-
-/* 로그인 화면 */
-.login-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:0; padding:24px; }
-.login-logo { width:52px; height:52px; border-radius:50%; background:#EEF0FF; display:flex; align-items:center; justify-content:center; margin-bottom:14px; }
-.login-logo i { font-size:26px; color:#534AB7; }
-.login-title { font-size:17px; font-weight:600; color:var(--color-text-primary); margin-bottom:4px; }
-.login-sub { font-size:12px; color:var(--color-text-secondary); margin-bottom:20px; }
-.user-btns { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-bottom:16px; max-width:320px; }
-.user-btn { padding:7px 16px; border-radius:20px; border:1px solid var(--color-border-tertiary); background:var(--color-background-secondary); color:var(--color-text-primary); font-size:13px; cursor:pointer; transition:all 0.15s; }
-.user-btn:hover { border-color:#534AB7; color:#534AB7; }
-.user-btn.selected { background:#534AB7; color:#fff; border-color:#534AB7; }
-.pw-row { display:flex; gap:8px; width:100%; max-width:280px; margin-bottom:8px; }
-.pw-input { flex:1; font-size:13px; padding:9px 13px; border-radius:var(--border-radius-md); border:1px solid var(--color-border-tertiary); background:var(--color-background-secondary); color:var(--color-text-primary); outline:none; }
-.pw-input:focus { border-color:#534AB7; }
-.login-btn { width:100%; max-width:280px; padding:10px; background:#534AB7; color:#fff; border:none; border-radius:var(--border-radius-md); font-size:14px; font-weight:500; cursor:pointer; }
-.login-btn:disabled { opacity:0.4; cursor:default; }
-.err-msg { font-size:12px; color:#D94F4F; height:16px; text-align:center; }
-
-/* 앱 레이아웃 */
-.app { display:flex; height:100%; }
-.sidebar { width:190px; border-right:0.5px solid var(--color-border-tertiary); display:flex; flex-direction:column; background:var(--color-background-secondary); flex-shrink:0; }
-.sidebar-header { padding:12px 12px 10px; border-bottom:0.5px solid var(--color-border-tertiary); }
-.me-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-.logout-btn { font-size:11px; color:var(--color-text-tertiary); background:none; border:none; cursor:pointer; padding:2px 6px; border-radius:4px; }
-.logout-btn:hover { color:#534AB7; }
-.avatar { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; flex-shrink:0; }
-.av-0{background:#EEEDFE;color:#3C3489;} .av-1{background:#E1F5EE;color:#085041;}
-.av-2{background:#FAECE7;color:#712B13;} .av-3{background:#E6F1FB;color:#0C447C;}
-.av-4{background:#FAEEDA;color:#633806;}
-.me-name { font-size:13px; font-weight:500; color:var(--color-text-primary); }
-.user-list { flex:1; overflow-y:auto; padding:6px 0; }
-.user-item { display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; position:relative; }
-.user-item:hover { background:var(--color-background-primary); }
-.user-item.active { background:var(--color-background-primary); }
-.user-item.active::before { content:''; position:absolute; left:0; top:0; bottom:0; width:2px; background:#534AB7; border-radius:0 2px 2px 0; }
-.u-meta { flex:1; min-width:0; }
-.u-name { font-size:13px; font-weight:500; color:var(--color-text-primary); }
-.badge { background:#534AB7; color:#fff; border-radius:10px; font-size:10px; padding:1px 5px; min-width:16px; text-align:center; flex-shrink:0; }
-
-/* 채팅 */
-.chat-area { flex:1; display:flex; flex-direction:column; min-width:0; }
-.chat-header { padding:11px 14px; border-bottom:0.5px solid var(--color-border-tertiary); display:flex; align-items:center; gap:10px; }
-.chat-header-name { font-size:14px; font-weight:500; color:var(--color-text-primary); }
-.messages { flex:1; overflow-y:auto; padding:12px 14px; display:flex; flex-direction:column; gap:6px; }
-.msg-row { display:flex; align-items:flex-end; gap:6px; }
-.msg-row.mine { flex-direction:row-reverse; }
-.bubble { max-width:72%; padding:8px 11px; border-radius:16px; font-size:13px; line-height:1.5; word-break:break-word; }
-.bubble.theirs { background:var(--color-background-secondary); color:var(--color-text-primary); border-bottom-left-radius:4px; }
-.bubble.mine { background:#534AB7; color:#fff; border-bottom-right-radius:4px; }
-.msg-time { font-size:10px; color:var(--color-text-tertiary); margin-bottom:2px; }
-.input-row { display:flex; gap:8px; padding:10px 12px; border-top:0.5px solid var(--color-border-tertiary); }
-.input-row input { flex:1; font-size:13px; padding:8px 12px; border-radius:20px; border:1px solid var(--color-border-tertiary); background:var(--color-background-secondary); color:var(--color-text-primary); outline:none; }
-.input-row input:focus { border-color:#534AB7; }
-.send-btn { width:34px; height:34px; border-radius:50%; background:#534AB7; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.send-btn i { color:#fff; font-size:16px; }
-.empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--color-text-tertiary); gap:8px; }
-.empty i { font-size:32px; }
-.empty p { font-size:13px; }
-.day-sep { text-align:center; font-size:11px; color:var(--color-text-tertiary); padding:4px 0; }
+.wrap { padding: 20px; font-family: var(--font-sans); display: flex; flex-direction: column; gap: 12px; }
+h3 { font-size: 15px; font-weight: 600; color: var(--color-text-primary); }
+.row { display: flex; gap: 8px; }
+button { padding: 8px 14px; background: #534AB7; color: #fff; border: none; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.log { font-size: 12px; background: var(--color-background-secondary); border-radius: 8px; padding: 10px; min-height: 120px; color: var(--color-text-primary); white-space: pre-wrap; border: 0.5px solid var(--color-border-tertiary); }
+input { flex: 1; font-size: 13px; padding: 8px 11px; border-radius: 8px; border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); color: var(--color-text-primary); outline: none; }
 </style>
-
-<div id="root" class="screen"></div>
-
+<div class="wrap">
+  <h3>🔧 Storage 진단 도구</h3>
+  <div class="row">
+    <input id="txt" placeholder="테스트 메시지 입력" value="안녕하세요 테스트" />
+  </div>
+  <div class="row">
+    <button onclick="doWrite()">① 쓰기 (shared)</button>
+    <button onclick="doRead()">② 읽기 (shared)</button>
+    <button onclick="doList()">③ 키 목록</button>
+    <button onclick="clearLog()">로그 지우기</button>
+  </div>
+  <div class="log" id="log">버튼을 눌러 테스트하세요...</div>
+</div>
 <script>
-const ACCOUNTS = [
-  { id:'원장', label:'원장', pw:'ped1234',   color:'av-0' },
-  { id:'약국', label:'약국', pw:'pharma1234', color:'av-1' },
-  { id:'접수1', label:'접수1', pw:'js10000',  color:'av-2' },
-  { id:'접수2', label:'접수2', pw:'js20000',  color:'av-3' },
-  { id:'NAM',  label:'NAM',  pw:'han1234',   color:'av-4' },
-];
-const SHARED_KEY = 'sarang_chat_v1';
-const LOCAL_KEY  = 'sarang_me';
+function log(msg){ const el=document.getElementById('log'); el.textContent+='\n'+msg; }
+function clearLog(){ document.getElementById('log').textContent=''; }
 
-let S = { msgs:{} }; // 공유: { msgs:{ key:[{from,text,ts}] } }
-let me = null;       // 현재 로그인 계정 id
-let peer = null;     // 선택된 대화 상대 id
-let pollTimer = null;
-let selId = null;    // 로그인 화면에서 선택한 계정
-
-function acct(id){ return ACCOUNTS.find(a=>a.id===id); }
-function mkey(a,b){ return [a,b].sort().join('||'); }
-function timeStr(ts){ return new Date(ts).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}); }
-function dateStr(ts){ return new Date(ts).toLocaleDateString('ko-KR',{month:'long',day:'numeric'}); }
-function unread(uid){
-  const k=mkey(me,uid), lsKey='sarang_read_'+me+'_'+uid;
-  const lastRead = parseInt(localStorage.getItem(lsKey)||'0');
-  return ((S.msgs[k])||[]).filter(m=>m.from===uid && m.ts>lastRead).length;
+async function doWrite(){
+  const txt=document.getElementById('txt').value||'test';
+  try{
+    const r=await window.storage.set('diag_test', JSON.stringify({msg:txt,ts:Date.now()}), true);
+    log('✅ 쓰기 성공: '+JSON.stringify(r));
+  }catch(e){ log('❌ 쓰기 실패: '+e); }
 }
-function markRead(uid){
-  const k=mkey(me,uid), lsKey='sarang_read_'+me+'_'+uid;
-  const msgs=S.msgs[k]||[];
-  if(msgs.length){ localStorage.setItem(lsKey, String(msgs[msgs.length-1].ts)); }
+async function doRead(){
+  try{
+    const r=await window.storage.get('diag_test', true);
+    if(r) log('✅ 읽기 성공: '+r.value);
+    else log('⚠️ 키 없음 (null 반환)');
+  }catch(e){ log('❌ 읽기 실패 (에러): '+e); }
 }
-
-async function loadShared(){
-  try{ const r=await window.storage.get(SHARED_KEY,true); if(r&&r.value) S=JSON.parse(r.value); }catch(e){}
+async function doList(){
+  try{
+    const r=await window.storage.list('', true);
+    log('✅ 키 목록: '+JSON.stringify(r));
+  }catch(e){ log('❌ 목록 실패: '+e); }
 }
-async function saveShared(){
-  try{ await window.storage.set(SHARED_KEY,JSON.stringify(S),true); }catch(e){}
-}
-
-async function init(){
-  await loadShared();
-  const saved = localStorage.getItem(LOCAL_KEY);
-  if(saved && acct(saved)){ me=saved; showApp(); startPoll(); }
-  else { showLogin(); }
-}
-
-/* ── 로그인 화면 ── */
-function showLogin(errMsg=''){
-  document.getElementById('root').innerHTML=`
-    <div class="login-wrap">
-      <div class="login-logo"><i class="ti ti-message-circle" aria-hidden="true"></i></div>
-      <div class="login-title">사랑소아청소년과 메신저</div>
-      <div class="login-sub">소속을 선택하고 비밀번호를 입력하세요</div>
-      <div class="user-btns" id="ubtns">
-        ${ACCOUNTS.map(a=>`<button class="user-btn" onclick="pickUser('${a.id}')">${a.label}</button>`).join('')}
-      </div>
-      <div class="pw-row">
-        <input class="pw-input" id="pw" type="password" placeholder="비밀번호" onkeydown="if(event.key==='Enter')doLogin()" autocomplete="current-password" />
-      </div>
-      <div class="err-msg" id="errmsg">${errMsg}</div>
-      <button class="login-btn" onclick="doLogin()">로그인</button>
-    </div>`;
-  if(selId) highlightBtn(selId);
-}
-
-function pickUser(id){
-  selId=id;
-  highlightBtn(id);
-  setTimeout(()=>{ const p=document.getElementById('pw'); if(p){p.focus();} },50);
-}
-function highlightBtn(id){
-  document.querySelectorAll('.user-btn').forEach(b=>{ b.classList.toggle('selected', b.textContent===id); });
-}
-
-function doLogin(){
-  if(!selId){ document.getElementById('errmsg').textContent='소속을 선택해주세요.'; return; }
-  const pw=(document.getElementById('pw')||{}).value||'';
-  const a=acct(selId);
-  if(!a||pw!==a.pw){ document.getElementById('errmsg').textContent='비밀번호가 맞지 않습니다.'; return; }
-  me=selId;
-  localStorage.setItem(LOCAL_KEY, me);
-  peer=null;
-  showApp();
-  startPoll();
-}
-
-function doLogout(){
-  me=null; peer=null;
-  localStorage.removeItem(LOCAL_KEY);
-  if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
-  showLogin();
-}
-
-/* ── 앱 화면 ── */
-function showApp(){
-  if(!me){ showLogin(); return; }
-  const myAcct=acct(me);
-  const others=ACCOUNTS.filter(a=>a.id!==me);
-
-  let sideHtml=others.map(u=>{
-    const uc=unread(u.id);
-    return `<div class="user-item ${peer===u.id?'active':''}" onclick="selectPeer('${u.id}')">
-      <div class="avatar ${u.color}">${u.label.slice(0,2)}</div>
-      <div class="u-meta"><div class="u-name">${u.label}</div></div>
-      ${uc>0?`<span class="badge">${uc}</span>`:''}
-    </div>`;
-  }).join('');
-
-  let chatHtml='';
-  if(peer){
-    const pAcct=acct(peer);
-    const k=mkey(me,peer);
-    const msgs=S.msgs[k]||[];
-    let mHtml=''; let lastD='';
-    for(const m of msgs){
-      const d=dateStr(m.ts);
-      if(d!==lastD){ mHtml+=`<div class="day-sep">${d}</div>`; lastD=d; }
-      const mine=m.from===me;
-      mHtml+=`<div class="msg-row ${mine?'mine':''}">
-        ${!mine?`<div class="avatar ${pAcct.color}" style="width:24px;height:24px;font-size:9px;">${pAcct.label.slice(0,2)}</div>`:''}
-        <div>
-          <div class="msg-time" style="text-align:${mine?'right':'left'}">${timeStr(m.ts)}</div>
-          <div class="bubble ${mine?'mine':'theirs'}">${escHtml(m.text)}</div>
-        </div>
-      </div>`;
-    }
-    if(!mHtml) mHtml=`<div class="empty"><i class="ti ti-message-dots" aria-hidden="true"></i><p>${pAcct.label}과(와) 대화를 시작하세요</p></div>`;
-    chatHtml=`
-      <div class="chat-header">
-        <div class="avatar ${pAcct.color}">${pAcct.label.slice(0,2)}</div>
-        <div class="chat-header-name">${pAcct.label}</div>
-      </div>
-      <div class="messages" id="msg-list">${mHtml}</div>
-      <div class="input-row">
-        <input type="text" id="msg-input" placeholder="메시지 입력..." onkeydown="if(event.key==='Enter')sendMsg()" autocomplete="off" />
-        <button class="send-btn" onclick="sendMsg()" aria-label="전송"><i class="ti ti-send" aria-hidden="true"></i></button>
-      </div>`;
-  } else {
-    chatHtml=`<div class="empty"><i class="ti ti-arrow-bar-left" aria-hidden="true"></i><p>왼쪽에서 대화 상대를 선택하세요</p></div>`;
-  }
-
-  document.getElementById('root').innerHTML=`
-    <div class="app">
-      <div class="sidebar">
-        <div class="sidebar-header">
-          <div class="me-row">
-            <div class="avatar ${myAcct.color}">${myAcct.label.slice(0,2)}</div>
-            <div class="me-name" style="flex:1">${myAcct.label}</div>
-            <button class="logout-btn" onclick="doLogout()">로그아웃</button>
-          </div>
-        </div>
-        <div class="user-list">${sideHtml}</div>
-      </div>
-      <div class="chat-area">${chatHtml}</div>
-    </div>`;
-
-  const ml=document.getElementById('msg-list');
-  if(ml) ml.scrollTop=ml.scrollHeight;
-}
-
-function escHtml(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-async function selectPeer(uid){
-  peer=uid;
-  markRead(uid);
-  showApp();
-  setTimeout(()=>{ const i=document.getElementById('msg-input'); if(i) i.focus(); },50);
-}
-
-async function sendMsg(){
-  const inp=document.getElementById('msg-input');
-  if(!inp||!peer) return;
-  const text=inp.value.trim();
-  if(!text) return;
-  inp.value='';
-  await loadShared();
-  const k=mkey(me,peer);
-  if(!S.msgs[k]) S.msgs[k]=[];
-  S.msgs[k].push({from:me,text,ts:Date.now()});
-  markRead(peer);
-  await saveShared();
-  showApp();
-  setTimeout(()=>{ const i=document.getElementById('msg-input'); if(i) i.focus(); },50);
-}
-
-async function poll(){
-  const prev=JSON.stringify(S);
-  await loadShared();
-  if(JSON.stringify(S)!==prev){ showApp(); }
-}
-function startPoll(){
-  if(pollTimer) clearInterval(pollTimer);
-  pollTimer=setInterval(poll,3000);
-}
-
-init();
 </script>
