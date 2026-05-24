@@ -1,48 +1,277 @@
-
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>사랑소아청소년과 메신저</title>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-.wrap { padding: 20px; font-family: var(--font-sans); display: flex; flex-direction: column; gap: 12px; }
-h3 { font-size: 15px; font-weight: 600; color: var(--color-text-primary); }
-.row { display: flex; gap: 8px; }
-button { padding: 8px 14px; background: #534AB7; color: #fff; border: none; border-radius: 8px; font-size: 13px; cursor: pointer; }
-.log { font-size: 12px; background: var(--color-background-secondary); border-radius: 8px; padding: 10px; min-height: 120px; color: var(--color-text-primary); white-space: pre-wrap; border: 0.5px solid var(--color-border-tertiary); }
-input { flex: 1; font-size: 13px; padding: 8px 11px; border-radius: 8px; border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); color: var(--color-text-primary); outline: none; }
-</style>
-<div class="wrap">
-  <h3>🔧 Storage 진단 도구</h3>
-  <div class="row">
-    <input id="txt" placeholder="테스트 메시지 입력" value="안녕하세요 테스트" />
-  </div>
-  <div class="row">
-    <button onclick="doWrite()">① 쓰기 (shared)</button>
-    <button onclick="doRead()">② 읽기 (shared)</button>
-    <button onclick="doList()">③ 키 목록</button>
-    <button onclick="clearLog()">로그 지우기</button>
-  </div>
-  <div class="log" id="log">버튼을 눌러 테스트하세요...</div>
-</div>
-<script>
-function log(msg){ const el=document.getElementById('log'); el.textContent+='\n'+msg; }
-function clearLog(){ document.getElementById('log').textContent=''; }
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f6fa;height:100vh;overflow:hidden;}
 
-async function doWrite(){
-  const txt=document.getElementById('txt').value||'test';
-  try{
-    const r=await window.storage.set('diag_test', JSON.stringify({msg:txt,ts:Date.now()}), true);
-    log('✅ 쓰기 성공: '+JSON.stringify(r));
-  }catch(e){ log('❌ 쓰기 실패: '+e); }
+/* 로그인 */
+.screen{height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f6fa;}
+.login-card{background:#fff;border-radius:16px;padding:32px 28px;width:320px;box-shadow:0 4px 24px rgba(0,0,0,0.10);display:flex;flex-direction:column;align-items:center;}
+.logo{width:56px;height:56px;border-radius:50%;background:#EEF0FF;display:flex;align-items:center;justify-content:center;margin-bottom:14px;}
+.logo svg{width:28px;height:28px;}
+.login-title{font-size:17px;font-weight:700;color:#1a1a2e;margin-bottom:4px;}
+.login-sub{font-size:12px;color:#888;margin-bottom:20px;text-align:center;}
+.user-btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:16px;}
+.user-btn{padding:7px 15px;border-radius:20px;border:1.5px solid #e0e0e0;background:#fff;color:#333;font-size:13px;cursor:pointer;transition:all 0.15s;font-weight:500;}
+.user-btn:hover{border-color:#534AB7;color:#534AB7;}
+.user-btn.selected{background:#534AB7;color:#fff;border-color:#534AB7;}
+.pw-wrap{width:100%;margin-bottom:6px;}
+.pw-input{width:100%;font-size:14px;padding:10px 14px;border-radius:10px;border:1.5px solid #e0e0e0;outline:none;transition:border 0.15s;}
+.pw-input:focus{border-color:#534AB7;}
+.err{font-size:12px;color:#e53e3e;height:18px;text-align:center;margin-bottom:4px;}
+.login-btn{width:100%;padding:11px;background:#534AB7;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;margin-top:2px;}
+.login-btn:hover{background:#453da0;}
+
+/* 앱 */
+.app{display:flex;height:100vh;background:#fff;}
+.sidebar{width:200px;border-right:1px solid #f0f0f0;display:flex;flex-direction:column;background:#fafafa;flex-shrink:0;}
+.sidebar-top{padding:14px 12px 10px;border-bottom:1px solid #f0f0f0;}
+.me-row{display:flex;align-items:center;gap:8px;}
+.me-name{font-size:13px;font-weight:600;color:#1a1a2e;flex:1;}
+.logout-btn{font-size:11px;color:#aaa;background:none;border:none;cursor:pointer;padding:2px 4px;}
+.logout-btn:hover{color:#534AB7;}
+.user-list{flex:1;overflow-y:auto;padding:8px 0;}
+.user-item{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;position:relative;border-left:2.5px solid transparent;}
+.user-item:hover{background:#f0efff;}
+.user-item.active{background:#f0efff;border-left-color:#534AB7;}
+.u-name{font-size:13px;font-weight:500;color:#1a1a2e;flex:1;}
+.badge{background:#534AB7;color:#fff;border-radius:10px;font-size:10px;padding:1px 6px;min-width:18px;text-align:center;flex-shrink:0;}
+.av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
+.av-s{width:26px;height:26px;font-size:10px;}
+.av0{background:#EEEDFE;color:#3C3489;} .av1{background:#E1F5EE;color:#085041;}
+.av2{background:#FAECE7;color:#712B13;} .av3{background:#E6F1FB;color:#0C447C;}
+.av4{background:#FAEEDA;color:#633806;}
+
+.chat-area{flex:1;display:flex;flex-direction:column;min-width:0;}
+.chat-top{padding:12px 16px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:10px;}
+.chat-top-name{font-size:14px;font-weight:600;color:#1a1a2e;}
+.msgs{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:7px;}
+.msg-row{display:flex;align-items:flex-end;gap:6px;}
+.msg-row.mine{flex-direction:row-reverse;}
+.bubble{max-width:72%;padding:9px 12px;border-radius:16px;font-size:13px;line-height:1.55;word-break:break-word;}
+.bubble.theirs{background:#f2f2f7;color:#1a1a2e;border-bottom-left-radius:4px;}
+.bubble.mine{background:#534AB7;color:#fff;border-bottom-right-radius:4px;}
+.msg-time{font-size:10px;color:#bbb;margin-bottom:3px;}
+.input-row{display:flex;gap:8px;padding:10px 12px;border-top:1px solid #f0f0f0;}
+.input-row input{flex:1;font-size:13px;padding:9px 14px;border-radius:22px;border:1.5px solid #e0e0e0;outline:none;background:#fafafa;}
+.input-row input:focus{border-color:#534AB7;background:#fff;}
+.send-btn{width:36px;height:36px;border-radius:50%;background:#534AB7;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.send-btn:hover{background:#453da0;}
+.send-btn svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2;}
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ccc;gap:8px;}
+.empty svg{width:40px;height:40px;stroke:#ddd;fill:none;stroke-width:1.5;}
+.empty p{font-size:13px;}
+.day-sep{text-align:center;font-size:11px;color:#bbb;padding:4px 0;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const FB_URL = "https://notice-hanriver-default-rtdb.firebaseio.com/";
+const app = initializeApp({ databaseURL: FB_URL }, "sarang");
+const db  = getDatabase(app);
+
+const ACCOUNTS = [
+  { id:'원장',  pw:'ped1234',    av:'av0' },
+  { id:'약국',  pw:'pharma1234', av:'av1' },
+  { id:'접수1', pw:'js10000',    av:'av2' },
+  { id:'접수2', pw:'js20000',    av:'av3' },
+  { id:'NAM',  pw:'han1234',    av:'av4' },
+];
+
+let me = null, peer = null, selId = null;
+let unsubscribe = null;
+let chatMsgs = [];
+
+function readKey(a,b){ return 'sr_'+[a,b].sort().join('_'); }
+function getLastRead(a,b){ return parseInt(localStorage.getItem(readKey(a,b))||'0'); }
+function setLastRead(a,b){ localStorage.setItem(readKey(a,b), String(Date.now())); }
+function acct(id){ return ACCOUNTS.find(a=>a.id===id); }
+function mkey(a,b){ return [a,b].sort().join('__'); }
+function esc(t){ return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function timeStr(ts){ return new Date(ts).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}); }
+function dateStr(ts){ return new Date(ts).toLocaleDateString('ko-KR',{month:'long',day:'numeric'}); }
+
+/* ── 로그인 ── */
+function showLogin(err=''){
+  document.getElementById('root').innerHTML=`
+  <div class="screen">
+    <div class="login-card">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#534AB7" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+      </div>
+      <div class="login-title">사랑소아청소년과 메신저</div>
+      <div class="login-sub">소속을 선택하고 비밀번호를 입력하세요</div>
+      <div class="user-btns">
+        ${ACCOUNTS.map(a=>`<button class="user-btn" onclick="pickUser('${a.id}')">${a.id}</button>`).join('')}
+      </div>
+      <div class="pw-wrap">
+        <input class="pw-input" id="pw" type="password" placeholder="비밀번호"
+          autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
+      </div>
+      <div class="err">${err}</div>
+      <button class="login-btn" onclick="doLogin()">로그인</button>
+    </div>
+  </div>`;
+  if(selId) document.querySelectorAll('.user-btn').forEach(b=>b.classList.toggle('selected',b.textContent===selId));
+  if(selId) setTimeout(()=>document.getElementById('pw')?.focus(),50);
 }
-async function doRead(){
-  try{
-    const r=await window.storage.get('diag_test', true);
-    if(r) log('✅ 읽기 성공: '+r.value);
-    else log('⚠️ 키 없음 (null 반환)');
-  }catch(e){ log('❌ 읽기 실패 (에러): '+e); }
+
+window.pickUser = id=>{
+  selId=id;
+  document.querySelectorAll('.user-btn').forEach(b=>b.classList.toggle('selected',b.textContent===id));
+  setTimeout(()=>document.getElementById('pw')?.focus(),50);
+};
+
+window.doLogin = ()=>{
+  if(!selId){ showLogin('소속을 선택해주세요.'); return; }
+  const pw=document.getElementById('pw')?.value||'';
+  const a=acct(selId);
+  if(!a||pw!==a.pw){ showLogin('비밀번호가 맞지 않습니다.'); return; }
+  me=selId;
+  localStorage.setItem('sarang_me', me);
+  peer=null;
+  showApp();
+};
+
+window.doLogout = ()=>{
+  me=null; peer=null;
+  localStorage.removeItem('sarang_me');
+  if(unsubscribe){ unsubscribe(); unsubscribe=null; }
+  showLogin();
+};
+
+/* ── unread 뱃지 ── */
+function loadUnreadBadges(){
+  const others=ACCOUNTS.filter(a=>a.id!==me);
+  for(const u of others){
+    const k=mkey(me,u.id);
+    const lr=getLastRead(me,u.id);
+    const q=query(ref(db,'msgs/'+k),orderByChild('ts'));
+    onValue(q, snap=>{
+      let c=0;
+      snap.forEach(ch=>{ const m=ch.val(); if(m.from===u.id && m.ts>lr) c++; });
+      const el=document.getElementById('badge_'+u.id);
+      if(el) el.innerHTML = c>0 ? `<span class="badge">${c}</span>` : '';
+    });
+  }
 }
-async function doList(){
-  try{
-    const r=await window.storage.list('', true);
-    log('✅ 키 목록: '+JSON.stringify(r));
-  }catch(e){ log('❌ 목록 실패: '+e); }
+
+/* ── 앱 화면 ── */
+function showApp(){
+  if(!me){ showLogin(); return; }
+  const myA=acct(me);
+  const others=ACCOUNTS.filter(a=>a.id!==me);
+
+  const sideHtml=others.map(u=>`
+    <div class="user-item ${peer===u.id?'active':''}" onclick="selectPeer('${u.id}')">
+      <div class="av ${u.av}">${u.id.slice(0,2)}</div>
+      <div class="u-name">${u.id}</div>
+      <div id="badge_${u.id}"></div>
+    </div>`).join('');
+
+  const chatHtml = peer ? `
+    <div class="chat-top">
+      <div class="av ${acct(peer).av}">${peer.slice(0,2)}</div>
+      <div class="chat-top-name">${peer}</div>
+    </div>
+    <div class="msgs" id="msg-list"></div>
+    <div class="input-row">
+      <input type="text" id="msg-input" placeholder="메시지 입력..." autocomplete="off"
+        onkeydown="if(event.key==='Enter')sendMsg()"/>
+      <button class="send-btn" onclick="sendMsg()">
+        <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>`
+  : `<div class="empty">
+      <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <p>왼쪽에서 대화 상대를 선택하세요</p>
+    </div>`;
+
+  document.getElementById('root').innerHTML=`
+    <div class="app">
+      <div class="sidebar">
+        <div class="sidebar-top">
+          <div class="me-row">
+            <div class="av ${myA.av}">${me.slice(0,2)}</div>
+            <div class="me-name">${me}</div>
+            <button class="logout-btn" onclick="doLogout()">로그아웃</button>
+          </div>
+        </div>
+        <div class="user-list">${sideHtml}</div>
+      </div>
+      <div class="chat-area">${chatHtml}</div>
+    </div>`;
+
+  loadUnreadBadges();
+
+  if(peer){
+    if(unsubscribe){ unsubscribe(); unsubscribe=null; }
+    const k=mkey(me,peer);
+    const q=query(ref(db,'msgs/'+k),orderByChild('ts'),limitToLast(300));
+    unsubscribe = onValue(q, snap=>{
+      chatMsgs=[];
+      snap.forEach(ch=>chatMsgs.push(ch.val()));
+      renderMsgs();
+    });
+    setLastRead(me,peer);
+    setTimeout(()=>document.getElementById('msg-input')?.focus(),100);
+  }
 }
+
+function renderMsgs(){
+  const list=document.getElementById('msg-list');
+  if(!list) return;
+  const pA=acct(peer);
+  let html=''; let lastD='';
+  for(const m of chatMsgs){
+    const d=dateStr(m.ts);
+    if(d!==lastD){ html+=`<div class="day-sep">${d}</div>`; lastD=d; }
+    const mine=m.from===me;
+    html+=`<div class="msg-row ${mine?'mine':''}">
+      ${!mine?`<div class="av av-s ${pA.av}">${peer.slice(0,2)}</div>`:''}
+      <div>
+        <div class="msg-time" style="text-align:${mine?'right':'left'}">${timeStr(m.ts)}</div>
+        <div class="bubble ${mine?'mine':'theirs'}">${esc(m.text)}</div>
+      </div>
+    </div>`;
+  }
+  if(!html) html=`<div class="empty"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><p>${peer}과(와) 대화를 시작하세요</p></div>`;
+  list.innerHTML=html;
+  list.scrollTop=list.scrollHeight;
+}
+
+window.selectPeer = uid=>{
+  peer=uid;
+  if(unsubscribe){ unsubscribe(); unsubscribe=null; }
+  showApp();
+};
+
+window.sendMsg = async()=>{
+  const inp=document.getElementById('msg-input');
+  if(!inp||!peer) return;
+  const text=inp.value.trim();
+  if(!text) return;
+  inp.value='';
+  const k=mkey(me,peer);
+  await push(ref(db,'msgs/'+k),{from:me,text,ts:Date.now()});
+  inp.focus();
+};
+
+/* ── 초기화 ── */
+const saved=localStorage.getItem('sarang_me');
+if(saved && acct(saved)){ me=saved; showApp(); }
+else showLogin();
 </script>
+</body>
+</html>
