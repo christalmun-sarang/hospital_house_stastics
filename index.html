@@ -193,6 +193,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <div class="admin-row"><label>표시 이름</label><input id="adm-label2" type="text" placeholder="예: 간호사2"/></div>
         <div class="admin-row"><label>비밀번호</label><input id="adm-pw2" type="text" placeholder="새 비밀번호"/></div>
       </div>
+      <div class="admin-section">
+        <div class="admin-section-title">접수컴 계정 (비번만 변경)</div>
+        <div class="admin-row"><label>비밀번호</label><input id="adm-pw-jsucom" type="text" placeholder="새 비밀번호"/></div>
+      </div>
+      <div class="admin-section">
+        <div class="admin-section-title">영유아컴 계정 (비번만 변경)</div>
+        <div class="admin-row"><label>비밀번호</label><input id="adm-pw-youngcom" type="text" placeholder="새 비밀번호"/></div>
+      </div>
       <div class="admin-msg" id="adm-msg"></div>
       <div class="admin-btns">
         <button class="admin-cancel" onclick="closeAdmin()">취소</button>
@@ -292,6 +300,8 @@ async function loadAccountsFromDB(){
         if(a.id==='yakguk'&&d.yakguk) return {...a, label:d.yakguk.label||a.label, pw:d.yakguk.pw||a.pw};
         if(a.id==='jesu1'&&d.jesu1) return {...a, label:d.jesu1.label||a.label, pw:d.jesu1.pw||a.pw};
         if(a.id==='jesu2'&&d.jesu2) return {...a, label:d.jesu2.label||a.label, pw:d.jesu2.pw||a.pw};
+        if(a.id==='jsucom'&&d.jsucom) return {...a, pw:d.jsucom.pw||a.pw};
+        if(a.id==='youngcom'&&d.youngcom) return {...a, pw:d.youngcom.pw||a.pw};
         return a;
       });
     }
@@ -304,12 +314,16 @@ function openAdmin(){
   const yak=ACCOUNTS.find(a=>a.id==='yakguk');
   const j1=ACCOUNTS.find(a=>a.id==='jesu1');
   const j2=ACCOUNTS.find(a=>a.id==='jesu2');
+  const jsu=ACCOUNTS.find(a=>a.id==='jsucom');
+  const yng=ACCOUNTS.find(a=>a.id==='youngcom');
   document.getElementById('adm-label-yak').value=yak?.label||'';
   document.getElementById('adm-pw-yak').value=yak?.pw||'';
   document.getElementById('adm-label1').value=j1?.label||'';
   document.getElementById('adm-pw1').value=j1?.pw||'';
   document.getElementById('adm-label2').value=j2?.label||'';
   document.getElementById('adm-pw2').value=j2?.pw||'';
+  document.getElementById('adm-pw-jsucom').value=jsu?.pw||'';
+  document.getElementById('adm-pw-youngcom').value=yng?.pw||'';
   document.getElementById('adm-msg').textContent='';
   document.getElementById('adminModal').classList.add('show');
 }
@@ -323,7 +337,9 @@ async function saveAdmin(){
   const p1=(document.getElementById('adm-pw1').value||'').trim();
   const l2=(document.getElementById('adm-label2').value||'').trim();
   const p2=(document.getElementById('adm-pw2').value||'').trim();
-  if(!lYak||!pYak||!l1||!p1||!l2||!p2){
+  const pJsu=(document.getElementById('adm-pw-jsucom').value||'').trim();
+  const pYng=(document.getElementById('adm-pw-youngcom').value||'').trim();
+  if(!lYak||!pYak||!l1||!p1||!l2||!p2||!pJsu||!pYng){
     document.getElementById('adm-msg').style.color='#e53e3e';
     document.getElementById('adm-msg').textContent='모든 항목을 입력해주세요.';
     return;
@@ -333,12 +349,16 @@ async function saveAdmin(){
       yakguk:{label:lYak, pw:pYak},
       jesu1:{label:l1, pw:p1},
       jesu2:{label:l2, pw:p2},
+      jsucom:{pw:pJsu},
+      youngcom:{pw:pYng},
     });
     // 로컬 반영
     ACCOUNTS=ACCOUNTS.map(a=>{
       if(a.id==='yakguk') return {...a,label:lYak,pw:pYak};
       if(a.id==='jesu1') return {...a,label:l1,pw:p1};
       if(a.id==='jesu2') return {...a,label:l2,pw:p2};
+      if(a.id==='jsucom') return {...a,pw:pJsu};
+      if(a.id==='youngcom') return {...a,pw:pYng};
       return a;
     });
     document.getElementById('adm-msg').style.color='#1D9E75';
@@ -1078,6 +1098,8 @@ function uploadFile(input){
       if(a.id==='yakguk'&&d.yakguk) return {...a, label:d.yakguk.label||a.label, pw:d.yakguk.pw||a.pw};
       if(a.id==='jesu1'&&d.jesu1) return {...a, label:d.jesu1.label||a.label, pw:d.jesu1.pw||a.pw};
       if(a.id==='jesu2'&&d.jesu2) return {...a, label:d.jesu2.label||a.label, pw:d.jesu2.pw||a.pw};
+      if(a.id==='jsucom'&&d.jsucom) return {...a, pw:d.jsucom.pw||a.pw};
+      if(a.id==='youngcom'&&d.youngcom) return {...a, pw:d.youngcom.pw||a.pw};
       return a;
     });
     // 로그인 화면이면 버튼 이름 갱신
