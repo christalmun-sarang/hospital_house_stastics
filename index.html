@@ -85,6 +85,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 #imgModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9998;align-items:center;justify-content:center;cursor:pointer;}
 #imgModal img{max-width:95vw;max-height:95vh;border-radius:8px;}
 #imgModal.show{display:flex;}
+/* 관리자 모달 */
+#adminModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9997;align-items:center;justify-content:center;}
+#adminModal.show{display:flex;}
+.admin-card{background:#fff;border-radius:14px;padding:22px 20px;width:300px;box-shadow:0 8px 32px rgba(0,0,0,0.2);}
+.admin-card h3{font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:16px;text-align:center;}
+.admin-row{margin-bottom:14px;}
+.admin-row label{font-size:11px;color:#666;font-weight:600;display:block;margin-bottom:4px;}
+.admin-row input{width:100%;font-size:12px;padding:7px 10px;border-radius:7px;border:1.5px solid #e0e0e0;outline:none;}
+.admin-row input:focus{border-color:#534AB7;}
+.admin-section{background:#f7f7fb;border-radius:9px;padding:12px;margin-bottom:12px;}
+.admin-section-title{font-size:11px;font-weight:700;color:#534AB7;margin-bottom:10px;}
+.admin-btns{display:flex;gap:8px;margin-top:4px;}
+.admin-save{flex:1;padding:9px;background:#534AB7;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;}
+.admin-cancel{padding:9px 14px;background:#f0f0f0;color:#555;border:none;border-radius:7px;font-size:12px;cursor:pointer;}
+.admin-msg{font-size:11px;color:#1D9E75;text-align:center;height:16px;margin-top:6px;}
+.admin-btn-top{font-size:10px;background:#f0efff;color:#534AB7;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-weight:600;}
 </style>
 </head>
 <body>
@@ -93,6 +109,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <span style="font-size:16px;">💬</span>
     <span class="ttl">사랑소아청소년과</span>
     <span class="sub" id="me-badge"></span>
+    <button id="admin-top-btn" class="admin-btn-top" onclick="openAdmin()" style="display:none;">⚙️ 관리</button>
   </div>
   <div id="main-content" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>
 </div>
@@ -106,6 +123,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="inc-btns">
     <button class="accept" onclick="acceptCall()">받기</button>
     <button class="reject" onclick="rejectCall()">거절</button>
+  </div>
+</div>
+<!-- 관리자 모달 -->
+<div id="adminModal">
+  <div class="admin-card">
+    <h3>⚙️ 계정 관리</h3>
+    <div class="admin-section">
+      <div class="admin-section-title">약국 계정</div>
+      <div class="admin-row"><label>표시 이름</label><input id="adm-label-yak" type="text" placeholder="예: 약국"/></div>
+      <div class="admin-row"><label>비밀번호</label><input id="adm-pw-yak" type="text" placeholder="새 비밀번호"/></div>
+    </div>
+    <div class="admin-section">
+      <div class="admin-section-title">접수 계정 A</div>
+      <div class="admin-row"><label>표시 이름</label><input id="adm-label1" type="text" placeholder="예: 간호사1"/></div>
+      <div class="admin-row"><label>비밀번호</label><input id="adm-pw1" type="text" placeholder="새 비밀번호"/></div>
+    </div>
+    <div class="admin-section">
+      <div class="admin-section-title">접수 계정 B</div>
+      <div class="admin-row"><label>표시 이름</label><input id="adm-label2" type="text" placeholder="예: 간호사2"/></div>
+      <div class="admin-row"><label>비밀번호</label><input id="adm-pw2" type="text" placeholder="새 비밀번호"/></div>
+    </div>
+    <div class="admin-msg" id="adm-msg"></div>
+    <div class="admin-btns">
+      <button class="admin-cancel" onclick="closeAdmin()">취소</button>
+      <button class="admin-save" onclick="saveAdmin()">저장</button>
+    </div>
   </div>
 </div>
 <!-- 숨겨진 오디오 -->
@@ -122,13 +165,81 @@ firebase.initializeApp({
 const db=firebase.database();
 const storage=firebase.storage();
 
-const ACCOUNTS=[
+const DEFAULT_ACCOUNTS=[
   {id:'wonjang',label:'원장', pw:'ped1234',    c:'c0'},
   {id:'yakguk', label:'약국', pw:'pharma1234', c:'c1'},
   {id:'jesu1',  label:'접수1',pw:'js10000',    c:'c2'},
   {id:'jesu2',  label:'접수2',pw:'js20000',    c:'c3'},
   {id:'nam',    label:'NAM', pw:'han1234',    c:'c4'},
 ];
+let ACCOUNTS=[...DEFAULT_ACCOUNTS];
+
+// Firebase에서 계정 정보 로드 (yakguk, jesu1, jesu2 동적)
+async function loadAccountsFromDB(){
+  try{
+    const snap=await db.ref('admin/accounts').once('value');
+    const d=snap.val();
+    if(d){
+      ACCOUNTS=DEFAULT_ACCOUNTS.map(a=>{
+        if(a.id==='yakguk'&&d.yakguk) return {...a, label:d.yakguk.label||a.label, pw:d.yakguk.pw||a.pw};
+        if(a.id==='jesu1'&&d.jesu1) return {...a, label:d.jesu1.label||a.label, pw:d.jesu1.pw||a.pw};
+        if(a.id==='jesu2'&&d.jesu2) return {...a, label:d.jesu2.label||a.label, pw:d.jesu2.pw||a.pw};
+        return a;
+      });
+    }
+  }catch(e){console.warn('계정 로드 실패',e);}
+}
+
+// 관리자 모달
+function openAdmin(){
+  const yak=ACCOUNTS.find(a=>a.id==='yakguk');
+  const j1=ACCOUNTS.find(a=>a.id==='jesu1');
+  const j2=ACCOUNTS.find(a=>a.id==='jesu2');
+  document.getElementById('adm-label-yak').value=yak?.label||'';
+  document.getElementById('adm-pw-yak').value=yak?.pw||'';
+  document.getElementById('adm-label1').value=j1?.label||'';
+  document.getElementById('adm-pw1').value=j1?.pw||'';
+  document.getElementById('adm-label2').value=j2?.label||'';
+  document.getElementById('adm-pw2').value=j2?.pw||'';
+  document.getElementById('adm-msg').textContent='';
+  document.getElementById('adminModal').classList.add('show');
+}
+function closeAdmin(){
+  document.getElementById('adminModal').classList.remove('show');
+}
+async function saveAdmin(){
+  const lYak=(document.getElementById('adm-label-yak').value||'').trim();
+  const pYak=(document.getElementById('adm-pw-yak').value||'').trim();
+  const l1=(document.getElementById('adm-label1').value||'').trim();
+  const p1=(document.getElementById('adm-pw1').value||'').trim();
+  const l2=(document.getElementById('adm-label2').value||'').trim();
+  const p2=(document.getElementById('adm-pw2').value||'').trim();
+  if(!lYak||!pYak||!l1||!p1||!l2||!p2){
+    document.getElementById('adm-msg').style.color='#e53e3e';
+    document.getElementById('adm-msg').textContent='모든 항목을 입력해주세요.';
+    return;
+  }
+  try{
+    await db.ref('admin/accounts').set({
+      yakguk:{label:lYak, pw:pYak},
+      jesu1:{label:l1, pw:p1},
+      jesu2:{label:l2, pw:p2},
+    });
+    // 로컬 반영
+    ACCOUNTS=ACCOUNTS.map(a=>{
+      if(a.id==='yakguk') return {...a,label:lYak,pw:pYak};
+      if(a.id==='jesu1') return {...a,label:l1,pw:p1};
+      if(a.id==='jesu2') return {...a,label:l2,pw:p2};
+      return a;
+    });
+    document.getElementById('adm-msg').style.color='#1D9E75';
+    document.getElementById('adm-msg').textContent='✅ 저장 완료!';
+    setTimeout(()=>{closeAdmin();renderApp();},900);
+  }catch(e){
+    document.getElementById('adm-msg').style.color='#e53e3e';
+    document.getElementById('adm-msg').textContent='저장 실패: '+e.message;
+  }
+}
 
 // STUN 서버 (구글 무료)
 const RTC_CONFIG={iceServers:[
@@ -162,8 +273,13 @@ function stopBadge(){
   badgeListeners={};
 }
 function toggleWrap(){document.getElementById('wrap').classList.toggle('collapsed');}
-function setMeBadge(l){const el=document.getElementById('me-badge');if(el)el.textContent=l?'['+l+']':'';}
-function openModal(src){document.getElementById('modalImg').src=src;document.getElementById('imgModal').classList.add('show');}
+function setMeBadge(l){
+  const el=document.getElementById('me-badge');
+  if(el) el.textContent=l?'['+l+']':'';
+  // 원장 로그인 시 관리 버튼 표시
+  const adminBtn=document.getElementById('admin-top-btn');
+  if(adminBtn) adminBtn.style.display=(me==='wonjang'||me==='nam')?'inline-block':'none';
+}function openModal(src){document.getElementById('modalImg').src=src;document.getElementById('imgModal').classList.add('show');}
 function closeModal(){document.getElementById('imgModal').classList.remove('show');}
 
 /* ════════════════════════════
@@ -323,6 +439,12 @@ function cleanupCall(){
 function updateCallBar(text='',cls=''){
   const bar=document.getElementById('call-bar');
   if(!bar) return;
+  // 통화 버튼 토글
+  const btnStart=document.getElementById('btn-call-start');
+  const btnEnd=document.getElementById('btn-call-end');
+  const active=!!text;
+  if(btnStart) btnStart.style.display=active?'none':'flex';
+  if(btnEnd)   btnEnd.style.display=active?'flex':'none';
   if(!text){bar.classList.remove('show','ringing');return;}
   bar.textContent=text;
   bar.className='';
@@ -426,14 +548,12 @@ function renderApp(){
     <div class="chat-top">
       <div class="av ${acct(peer).c}">${acct(peer).label.slice(0,2)}</div>
       <div class="chat-top-name">${acct(peer).label}</div>
-      ${inCall
-        ? `<button class="call-btn end" onclick="hangUp(true)" title="통화 종료">
+      <button class="call-btn start" onclick="startCall()" title="음성통화" id="btn-call-start" style="${inCall?'display:none':''}">
             <svg viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
-           </button>`
-        : `<button class="call-btn start" onclick="startCall()" title="음성통화">
+           </button>
+      <button class="call-btn end" onclick="hangUp(true)" title="통화 종료" id="btn-call-end" style="${inCall?'':'display:none'}">
             <svg viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
-           </button>`
-      }
+           </button>
     </div>
     <div id="call-bar"></div>
     <div class="msgs" id="msglist"></div>
@@ -548,9 +668,26 @@ function uploadFile(input){
 }
 
 /* ── 초기화 ── */
-const saved=localStorage.getItem('sarang_me');
-if(saved&&acct(saved)){me=saved;setMeBadge(acct(saved).label);unread={};initUnreadThenRender();}
-else showLogin();
+(async()=>{
+  await loadAccountsFromDB();
+  // 실시간으로 계정 변경 감지
+  db.ref('admin/accounts').on('value',snap=>{
+    const d=snap.val();
+    if(!d) return;
+    ACCOUNTS=DEFAULT_ACCOUNTS.map(a=>{
+      if(a.id==='yakguk'&&d.yakguk) return {...a, label:d.yakguk.label||a.label, pw:d.yakguk.pw||a.pw};
+      if(a.id==='jesu1'&&d.jesu1) return {...a, label:d.jesu1.label||a.label, pw:d.jesu1.pw||a.pw};
+      if(a.id==='jesu2'&&d.jesu2) return {...a, label:d.jesu2.label||a.label, pw:d.jesu2.pw||a.pw};
+      return a;
+    });
+    // 로그인 화면이면 버튼 이름 갱신
+    if(!me) showLogin();
+    else if(document.querySelector('.sidebar')) renderApp();
+  });
+  const saved=localStorage.getItem('sarang_me');
+  if(saved&&acct(saved)){me=saved;setMeBadge(acct(saved).label);unread={};initUnreadThenRender();}
+  else showLogin();
+})();
 </script>
 </body>
 </html>
