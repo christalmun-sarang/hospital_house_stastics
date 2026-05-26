@@ -208,6 +208,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
   </div>
 </div>
+<!-- 직원용 접수관리 모달 -->
+<div id="staffModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9997;align-items:center;justify-content:center;">
+  <div class="admin-card" style="width:290px;">
+    <h3 style="font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:14px;text-align:center;">👤 접수 계정 관리</h3>
+    <div class="admin-section">
+      <div class="admin-section-title">접수 계정 A</div>
+      <div class="admin-row"><label>표시 이름</label><input id="stf-label1" type="text" placeholder="예: 홍길동"/></div>
+      <div class="admin-row"><label>비밀번호</label><input id="stf-pw1" type="text" placeholder="새 비밀번호"/></div>
+    </div>
+    <div class="admin-section">
+      <div class="admin-section-title">접수 계정 B</div>
+      <div class="admin-row"><label>표시 이름</label><input id="stf-label2" type="text" placeholder="예: 김철수"/></div>
+      <div class="admin-row"><label>비밀번호</label><input id="stf-pw2" type="text" placeholder="새 비밀번호"/></div>
+    </div>
+    <div class="admin-msg" id="stf-msg"></div>
+    <div class="admin-btns">
+      <button class="admin-cancel" onclick="closeStaffAdmin()">취소</button>
+      <button class="admin-save" onclick="saveStaffAdmin()">저장</button>
+    </div>
+  </div>
+</div>
 <!-- 진료 메모 모달 -->
 <div id="memoModal">
   <div class="memo-card">
@@ -251,11 +272,13 @@ const db=firebase.database();
 const storage=firebase.storage();
 
 const DEFAULT_ACCOUNTS=[
-  {id:'wonjang',label:'원장', pw:'ped1234',    c:'c0'},
-  {id:'yakguk', label:'약국', pw:'pharma1234', c:'c1'},
-  {id:'jesu1',  label:'접수1',pw:'js10000',    c:'c2'},
-  {id:'jesu2',  label:'접수2',pw:'js20000',    c:'c3'},
-  {id:'nam',    label:'NAM', pw:'han1234',    c:'c4'},
+  {id:'wonjang',label:'원장',   pw:'ped1234',    c:'c0'},
+  {id:'yakguk', label:'약국',   pw:'pharma1234', c:'c1'},
+  {id:'jesu1',  label:'접수1',  pw:'js10000',    c:'c2'},
+  {id:'jesu2',  label:'접수2',  pw:'js20000',    c:'c3'},
+  {id:'nam',    label:'NAM',   pw:'han1234',    c:'c4'},
+  {id:'jsucom', label:'접수컴', pw:'jcom1234',   c:'c2'},
+  {id:'youngcom',label:'영유아컴',pw:'ycom1234', c:'c3'},
 ];
 let ACCOUNTS=[...DEFAULT_ACCOUNTS];
 
@@ -277,6 +300,7 @@ async function loadAccountsFromDB(){
 
 // 관리자 모달
 function openAdmin(){
+  if(isStaff(me)){openStaffAdmin();return;}
   const yak=ACCOUNTS.find(a=>a.id==='yakguk');
   const j1=ACCOUNTS.find(a=>a.id==='jesu1');
   const j2=ACCOUNTS.find(a=>a.id==='jesu2');
@@ -373,7 +397,11 @@ function setMeBadge(l){
   if(el) el.textContent=l?'['+l+']':'';
   // 원장 로그인 시 관리 버튼 표시
   const adminBtn=document.getElementById('admin-top-btn');
-  if(adminBtn) adminBtn.style.display=(me==='wonjang'||me==='nam')?'inline-block':'none';
+  if(adminBtn){
+    if(isAdmin(me)){adminBtn.style.display='inline-block'; adminBtn.textContent='⚙️ 관리';}
+    else if(isStaff(me)){adminBtn.style.display='inline-block'; adminBtn.textContent='👤 접수관리';}
+    else adminBtn.style.display='none';
+  }
 }function openModal(src){document.getElementById('modalImg').src=src;document.getElementById('imgModal').classList.add('show');}
 function closeModal(){document.getElementById('imgModal').classList.remove('show');}
 
@@ -467,7 +495,7 @@ function startCallListener(){
   // 나를 callee로 하는 통화 감지 (비관리자는 원장에서 오는 것만)
   const others=isAdmin(me)
     ? ACCOUNTS.filter(a=>a.id!==me)
-    : ACCOUNTS.filter(a=>a.id==='wonjang');
+    : [ACCOUNTS.find(a=>a.id==='wonjang')].filter(Boolean);
   others.forEach(u=>{
     const ck=db.ref('calls/'+ckey(me,u.id));
     ck.on('value',snap=>{
@@ -594,6 +622,49 @@ function cleanupCall(){
   callStartTs=0;
   callState='idle'; callPeer=null; callId=null;
   updateCallBar();
+}
+
+// 직원용 접수관리 모달
+function openStaffAdmin(){
+  const j1=ACCOUNTS.find(a=>a.id==='jesu1');
+  const j2=ACCOUNTS.find(a=>a.id==='jesu2');
+  document.getElementById('stf-label1').value=j1?.label||'';
+  document.getElementById('stf-pw1').value=j1?.pw||'';
+  document.getElementById('stf-label2').value=j2?.label||'';
+  document.getElementById('stf-pw2').value=j2?.pw||'';
+  document.getElementById('stf-msg').textContent='';
+  document.getElementById('staffModal').style.display='flex';
+}
+function closeStaffAdmin(){
+  document.getElementById('staffModal').style.display='none';
+}
+async function saveStaffAdmin(){
+  const l1=(document.getElementById('stf-label1').value||'').trim();
+  const p1=(document.getElementById('stf-pw1').value||'').trim();
+  const l2=(document.getElementById('stf-label2').value||'').trim();
+  const p2=(document.getElementById('stf-pw2').value||'').trim();
+  if(!l1||!p1||!l2||!p2){
+    document.getElementById('stf-msg').style.color='#e53e3e';
+    document.getElementById('stf-msg').textContent='모든 항목을 입력해주세요.';
+    return;
+  }
+  try{
+    await db.ref('admin/accounts').update({
+      jesu1:{label:l1,pw:p1},
+      jesu2:{label:l2,pw:p2},
+    });
+    ACCOUNTS=ACCOUNTS.map(a=>{
+      if(a.id==='jesu1') return {...a,label:l1,pw:p1};
+      if(a.id==='jesu2') return {...a,label:l2,pw:p2};
+      return a;
+    });
+    document.getElementById('stf-msg').style.color='#1D9E75';
+    document.getElementById('stf-msg').textContent='✅ 저장 완료!';
+    setTimeout(closeStaffAdmin, 900);
+  }catch(e){
+    document.getElementById('stf-msg').style.color='#e53e3e';
+    document.getElementById('stf-msg').textContent='저장 실패: '+e.message;
+  }
 }
 
 // 시간 포맷
@@ -768,12 +839,12 @@ function pickUser(id){
   // 관리자 계정은 비번 숨김, 비관리자는 보이도록
   const pwEl=document.getElementById('pw');
   if(pwEl){
-    pwEl.type=ADMIN_IDS.includes(id)?'password':'text';
+    pwEl.type=isAdmin(id)?'password':'text';
     pwEl.value='';
     pwEl.focus();
   }
 }
-const TEMP_IDS=['jesu1','jesu2']; // 로그인마다 대화 초기화할 계정
+// GUEST_IDS는 위에서 이미 선언됨 (로그인마다 대화 초기화)
 
 function doLogin(){
   if(!selId){showLogin('소속을 선택해주세요.');return;}
@@ -783,7 +854,7 @@ function doLogin(){
   me=selId;localStorage.setItem('sarang_me',me);
   unread={};peer=null;setMeBadge(a.label);
   // 접수1·접수2는 로그인 시 원장과의 대화 내용 초기화
-  if(TEMP_IDS.includes(me)){
+  if(GUEST_IDS.includes(me)){
     const chatKey='msgs/'+mkey(me,'wonjang');
     db.ref(chatKey).remove().then(()=>{
       // 읽음 기록도 초기화
@@ -840,15 +911,20 @@ function updateBadgeEl(uid){
 /* ════════════════════════════
    앱 화면
 ════════════════════════════ */
-const ADMIN_IDS=['wonjang','nam'];
+const ADMIN_IDS=['wonjang','nam'];          // 전체 관리자 (모든 계정 관리 + 통화기록)
+const STAFF_IDS=['jsucom','youngcom'];      // 직원 관리자 (접수1·2 이름/비번만 변경)
+const GUEST_IDS=['jesu1','jesu2'];          // 게스트 (원장과만 연결, 로그인마다 초기화)
 function isAdmin(id){return ADMIN_IDS.includes(id);}
+function isStaff(id){return STAFF_IDS.includes(id);}
+function canManage(id){return isAdmin(id)||isStaff(id);}
 
 function renderApp(){
   const myA=acct(me);
   // 관리자(원장·NAM)는 전체 목록, 나머지는 원장만 표시
   const others=isAdmin(me)
     ? ACCOUNTS.filter(a=>a.id!==me)
-    : ACCOUNTS.filter(a=>a.id==='wonjang');
+    : [ACCOUNTS.find(a=>a.id==='wonjang')].filter(Boolean);
+  // 관리 버튼: 전체관리자=⚙️관리, 직원=👤접수관리
   const sideHtml=others.map(u=>`
     <div class="uitem${peer===u.id?' active':''}" onclick="selectPeer('${u.id}')">
       <div class="av ${u.c}">${u.label.slice(0,2)}</div>
@@ -954,11 +1030,9 @@ function renderMsgs(msgs){
 
 function selectPeer(uid){stopChat();peer=uid;unread[uid]=0;setLR(uid);renderApp();}
 function sanitizePeer(){
-  // 비관리자가 원장 외 peer를 갖고 있으면 원장으로 자동 설정
+  // 관리자 아닌 경우 원장과 자동 연결
   if(!isAdmin(me)){
-    if(peer!=='wonjang'){
-      peer='wonjang';
-    }
+    peer='wonjang';
   }
 }
 
