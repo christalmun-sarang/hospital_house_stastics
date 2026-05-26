@@ -410,8 +410,10 @@ async function startCall(withVideo=false){
 // 수신 감지 시작
 function startCallListener(){
   if(callListenerRef) callListenerRef.off();
-  // 나를 callee로 하는 통화 감지
-  const others=ACCOUNTS.filter(a=>a.id!==me);
+  // 나를 callee로 하는 통화 감지 (비관리자는 원장에서 오는 것만)
+  const others=isAdmin(me)
+    ? ACCOUNTS.filter(a=>a.id!==me)
+    : ACCOUNTS.filter(a=>a.id==='wonjang');
   others.forEach(u=>{
     const ck=db.ref('calls/'+ckey(me,u.id));
     ck.on('value',snap=>{
@@ -638,7 +640,7 @@ function doLogout(){
 
 function initUnreadThenRender(){
   const others=ACCOUNTS.filter(a=>a.id!==me);
-  if(!others.length){renderApp();startBadgeListeners();startCallListener();return;}
+  if(!others.length){sanitizePeer();renderApp();startBadgeListeners();startCallListener();return;}
   let done=0;
   others.forEach(u=>{
     const lr=getLR(u.id);
@@ -646,7 +648,7 @@ function initUnreadThenRender(){
       let c=0;
       snap.forEach(ch=>{const m=ch.val();if(m&&typeof m==='object'&&m.from===u.id&&m.ts>lr)c++;});
       unread[u.id]=c;done++;
-      if(done===others.length){renderApp();startBadgeListeners();startCallListener();}
+      if(done===others.length){sanitizePeer();renderApp();startBadgeListeners();startCallListener();}
     });
   });
 }
@@ -676,9 +678,15 @@ function updateBadgeEl(uid){
 /* ════════════════════════════
    앱 화면
 ════════════════════════════ */
+const ADMIN_IDS=['wonjang','nam'];
+function isAdmin(id){return ADMIN_IDS.includes(id);}
+
 function renderApp(){
   const myA=acct(me);
-  const others=ACCOUNTS.filter(a=>a.id!==me);
+  // 관리자(원장·NAM)는 전체 목록, 나머지는 원장만 표시
+  const others=isAdmin(me)
+    ? ACCOUNTS.filter(a=>a.id!==me)
+    : ACCOUNTS.filter(a=>a.id==='wonjang');
   const sideHtml=others.map(u=>`
     <div class="uitem${peer===u.id?' active':''}" onclick="selectPeer('${u.id}')">
       <div class="av ${u.c}">${u.label.slice(0,2)}</div>
@@ -783,6 +791,10 @@ function renderMsgs(msgs){
 }
 
 function selectPeer(uid){stopChat();peer=uid;unread[uid]=0;setLR(uid);renderApp();}
+function sanitizePeer(){
+  // 비관리자가 원장 외 peer를 갖고 있으면 초기화
+  if(!isAdmin(me) && peer && peer!=='wonjang'){peer=null;}
+}
 
 function sendMsg(){
   const inp=document.getElementById('minput');
