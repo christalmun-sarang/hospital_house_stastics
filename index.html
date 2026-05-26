@@ -792,8 +792,12 @@ function renderMsgs(msgs){
 
 function selectPeer(uid){stopChat();peer=uid;unread[uid]=0;setLR(uid);renderApp();}
 function sanitizePeer(){
-  // 비관리자가 원장 외 peer를 갖고 있으면 초기화
-  if(!isAdmin(me) && peer && peer!=='wonjang'){peer=null;}
+  // 비관리자가 원장 외 peer를 갖고 있으면 원장으로 자동 설정
+  if(!isAdmin(me)){
+    if(peer!=='wonjang'){
+      peer='wonjang';
+    }
+  }
 }
 
 function sendMsg(){
