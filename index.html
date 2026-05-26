@@ -85,6 +85,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 #imgModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9998;align-items:center;justify-content:center;cursor:pointer;}
 #imgModal img{max-width:95vw;max-height:95vh;border-radius:8px;}
 #imgModal.show{display:flex;}
+/* ── 영상통화 전체화면 ── */
+#videoOverlay{display:none;position:fixed;inset:0;background:#000;z-index:10000;flex-direction:column;align-items:center;justify-content:center;}
+#videoOverlay.show{display:flex;}
+#remoteVideo{width:100%;height:100%;object-fit:cover;background:#111;}
+#localVideo{position:absolute;bottom:20px;right:16px;width:100px;height:140px;object-fit:cover;border-radius:10px;border:2px solid #fff;background:#222;z-index:10001;}
+.video-bar{position:absolute;top:0;left:0;right:0;padding:14px 16px;background:linear-gradient(to bottom,rgba(0,0,0,0.6),transparent);color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;z-index:10002;}
+.video-controls{position:absolute;bottom:0;left:0;right:0;padding:20px 16px 32px;background:linear-gradient(to top,rgba(0,0,0,0.7),transparent);display:flex;justify-content:center;gap:20px;z-index:10002;}
+.vc-btn{width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:22px;}
+.vc-btn.end{background:#E53E3E;}
+.vc-btn.mute{background:rgba(255,255,255,0.2);}
+.vc-btn.mute.active{background:rgba(255,255,255,0.5);}
+.vc-btn.cam{background:rgba(255,255,255,0.2);}
+.vc-btn.cam.active{background:rgba(255,255,255,0.5);}
+.video-status{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:14px;font-weight:600;text-align:center;z-index:10002;pointer-events:none;}
+/* 영상통화 버튼 */
+.vcall-btn{width:28px;height:28px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:#7c3aed;}
+.vcall-btn svg{width:14px;height:14px;fill:#fff;}
 /* 관리자 모달 */
 #adminModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9997;align-items:center;justify-content:center;}
 #adminModal.show{display:flex;}
@@ -153,6 +170,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div>
 <!-- 숨겨진 오디오 -->
 <audio id="remoteAudio" autoplay playsinline></audio>
+<!-- 영상통화 전체화면 오버레이 -->
+<div id="videoOverlay">
+  <video id="remoteVideo" autoplay playsinline muted="false"></video>
+  <video id="localVideo" autoplay playsinline muted></video>
+  <div class="video-bar">
+    <span>📹</span>
+    <span id="video-peer-name">영상통화</span>
+    <span id="video-timer" style="font-size:11px;opacity:0.8;margin-left:auto;"></span>
+  </div>
+  <div class="video-status" id="video-status"></div>
+  <div class="video-controls">
+    <button class="vc-btn mute" id="vc-mute" onclick="toggleVMute()" title="음소거">🎤</button>
+    <button class="vc-btn end" onclick="hangUpVideo(true)" title="통화 종료">📵</button>
+    <button class="vc-btn cam" id="vc-cam" onclick="toggleVCam()" title="카메라 끄기">📷</button>
+  </div>
+</div>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -241,22 +274,30 @@ async function saveAdmin(){
   }
 }
 
-// STUN 서버 (구글 무료)
+// STUN + TURN 서버 (외부망 대응)
 const RTC_CONFIG={iceServers:[
   {urls:'stun:stun.l.google.com:19302'},
   {urls:'stun:stun1.l.google.com:19302'},
+  {urls:'turn:openrelay.metered.ca:80',    username:'openrelayproject',credential:'openrelayproject'},
+  {urls:'turn:openrelay.metered.ca:443',   username:'openrelayproject',credential:'openrelayproject'},
+  {urls:'turns:openrelay.metered.ca:443',  username:'openrelayproject',credential:'openrelayproject'},
 ]};
 
 let me=null,peer=null,selId=null,unread={},chatRef=null,badgeListeners={};
 
 // WebRTC
 let pc=null;          // RTCPeerConnection
-let localStream=null; // 내 마이크
+let localStream=null; // 내 마이크/카메라
 let callRef=null;     // Firebase 통화 신호 ref
 let callListenerRef=null; // 수신 감지 ref
 let callState='idle'; // idle | calling | ringing | incall
 let callPeer=null;    // 통화 상대 id
 let callId=null;      // 현재 통화 id
+let isVideo=false;    // 현재 통화가 영상통화인지
+let videoTimer=null;  // 통화 시간 타이머
+let videoSeconds=0;   // 통화 경과 시간
+let vMuted=false;     // 음소거 상태
+let vCamOff=false;    // 카메라 끔 상태
 
 function acct(id){return ACCOUNTS.find(a=>a.id===id);}
 function mkey(a,b){return [a,b].sort().join('_vs_');}
@@ -287,23 +328,42 @@ function closeModal(){document.getElementById('imgModal').classList.remove('show
 ════════════════════════════ */
 function callKey(){return ckey(me,callPeer);}
 
-async function startCall(){
+async function startCall(withVideo=false){
   if(callState!=='idle'||!peer){return;}
   callPeer=peer;
   callState='calling';
-  updateCallBar('📞 연결 중...','ringing');
+  isVideo=withVideo;
+  updateCallBar((withVideo?'📹':'📞')+' 연결 중...','ringing');
 
-  // 마이크 획득
-  try{ localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false}); }
-  catch(e){ alert('마이크 접근 실패: '+e.message); callState='idle'; updateCallBar(); return; }
+  // 미디어 획득 (카메라 없으면 음성만)
+  let constraints={audio:true, video:withVideo};
+  try{ localStream=await navigator.mediaDevices.getUserMedia(constraints); }
+  catch(e){
+    if(withVideo){
+      try{ localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false}); isVideo=false; }
+      catch(e2){ alert('마이크 접근 실패: '+e2.message); callState='idle'; updateCallBar(); return; }
+    } else {
+      alert('마이크 접근 실패: '+e.message); callState='idle'; updateCallBar(); return;
+    }
+  }
+
+  if(isVideo && localStream.getVideoTracks().length>0){
+    const lv=document.getElementById('localVideo');
+    if(lv) lv.srcObject=localStream;
+  }
 
   pc=new RTCPeerConnection(RTC_CONFIG);
   localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
 
-  // 원격 오디오 연결
+  // 원격 스트림 연결
   pc.ontrack=e=>{
-    const audio=document.getElementById('remoteAudio');
-    if(audio) audio.srcObject=e.streams[0];
+    if(isVideo){
+      const rv=document.getElementById('remoteVideo');
+      if(rv) rv.srcObject=e.streams[0];
+    } else {
+      const audio=document.getElementById('remoteAudio');
+      if(audio) audio.srcObject=e.streams[0];
+    }
   };
 
   // ICE 후보 Firebase 전송
@@ -321,7 +381,7 @@ async function startCall(){
   await ckRef.set({
     callId, caller:me, callee:callPeer,
     offer:{type:offer.type, sdp:offer.sdp},
-    status:'calling', ts:Date.now()
+    status:'calling', isVideo:isVideo, ts:Date.now()
   });
   callRef=ckRef;
 
@@ -331,15 +391,18 @@ async function startCall(){
     if(!d) return;
     if(d.status==='answered' && d.answer && pc.signalingState==='have-local-offer'){
       await pc.setRemoteDescription(new RTCSessionDescription(d.answer));
-      // callee ICE 후보 수신
       callRef.child('calleeCandidates').on('child_added',cs=>{
         pc.addIceCandidate(new RTCIceCandidate(cs.val())).catch(()=>{});
       });
       callState='incall';
-      updateCallBar('📞 통화 중 ('+acct(callPeer)?.label+')', 'show');
+      if(isVideo){
+        showVideoOverlay(callPeer);
+      } else {
+        updateCallBar('📞 통화 중 ('+acct(callPeer)?.label+')', 'show');
+      }
     }
     if(d.status==='rejected'||d.status==='ended'){
-      hangUp(false);
+      if(isVideo) hangUpVideo(false); else hangUp(false);
     }
   });
 }
@@ -361,14 +424,14 @@ function startCallListener(){
       callId=d.callId;
       callRef=ck;
       callState='ringing';
-      showIncoming(u.id);
+      showIncoming(u.id, !!(d.isVideo));
     });
   });
 }
 
-function showIncoming(uid){
+function showIncoming(uid, vid=false){
   const el=document.getElementById('incoming');
-  document.getElementById('inc-name').textContent='📞 '+acct(uid)?.label+'님이 전화 중...';
+  document.getElementById('inc-name').textContent=(vid?'📹':'📞')+' '+acct(uid)?.label+'님이 '+(vid?'영상':'전화')+'중...';
   el.classList.add('show');
 }
 function hideIncoming(){
@@ -380,24 +443,43 @@ async function acceptCall(){
   if(callState!=='ringing'||!callRef) return;
   callState='incall';
 
-  try{ localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false}); }
-  catch(e){ alert('마이크 접근 실패: '+e.message); rejectCall(); return; }
+  // 영상통화인지 확인
+  const snap0=await callRef.once('value');
+  const d0=snap0.val();
+  isVideo=!!(d0&&d0.isVideo);
+
+  let constraints={audio:true, video:isVideo};
+  try{ localStream=await navigator.mediaDevices.getUserMedia(constraints); }
+  catch(e){
+    if(isVideo){
+      try{ localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false}); isVideo=false; }
+      catch(e2){ alert('마이크 접근 실패: '+e2.message); rejectCall(); return; }
+    } else {
+      alert('마이크 접근 실패: '+e.message); rejectCall(); return;
+    }
+  }
+
+  if(isVideo && localStream.getVideoTracks().length>0){
+    const lv=document.getElementById('localVideo');
+    if(lv) lv.srcObject=localStream;
+  }
 
   pc=new RTCPeerConnection(RTC_CONFIG);
   localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
   pc.ontrack=e=>{
-    const audio=document.getElementById('remoteAudio');
-    if(audio) audio.srcObject=e.streams[0];
+    if(isVideo){
+      const rv=document.getElementById('remoteVideo');
+      if(rv) rv.srcObject=e.streams[0];
+    } else {
+      const audio=document.getElementById('remoteAudio');
+      if(audio) audio.srcObject=e.streams[0];
+    }
   };
   pc.onicecandidate=e=>{
     if(e.candidate) callRef.child('calleeCandidates').push(e.candidate.toJSON());
   };
 
-  const snap=await callRef.once('value');
-  const d=snap.val();
-  await pc.setRemoteDescription(new RTCSessionDescription(d.offer));
-
-  // caller ICE 후보 수신
+  await pc.setRemoteDescription(new RTCSessionDescription(d0.offer));
   callRef.child('callerCandidates').on('child_added',cs=>{
     pc.addIceCandidate(new RTCIceCandidate(cs.val())).catch(()=>{});
   });
@@ -406,7 +488,11 @@ async function acceptCall(){
   await pc.setLocalDescription(answer);
   await callRef.update({answer:{type:answer.type,sdp:answer.sdp},status:'answered'});
 
-  updateCallBar('📞 통화 중 ('+acct(callPeer)?.label+')','show');
+  if(isVideo){
+    showVideoOverlay(callPeer);
+  } else {
+    updateCallBar('📞 통화 중 ('+acct(callPeer)?.label+')','show');
+  }
 }
 
 function rejectCall(){
@@ -431,9 +517,66 @@ function cleanupCall(){
   if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}
   const audio=document.getElementById('remoteAudio');
   if(audio) audio.srcObject=null;
+  const rv=document.getElementById('remoteVideo');
+  if(rv) rv.srcObject=null;
+  const lv=document.getElementById('localVideo');
+  if(lv) lv.srcObject=null;
   if(callRef){callRef.off();callRef=null;}
+  if(videoTimer){clearInterval(videoTimer);videoTimer=null;}
+  videoSeconds=0; vMuted=false; vCamOff=false; isVideo=false;
   callState='idle'; callPeer=null; callId=null;
   updateCallBar();
+}
+
+// 영상통화 오버레이 표시
+function showVideoOverlay(uid){
+  document.getElementById('video-peer-name').textContent=acct(uid)?.label||uid;
+  document.getElementById('video-status').textContent='';
+  document.getElementById('videoOverlay').classList.add('show');
+  videoSeconds=0;
+  if(videoTimer) clearInterval(videoTimer);
+  videoTimer=setInterval(()=>{
+    videoSeconds++;
+    const m=String(Math.floor(videoSeconds/60)).padStart(2,'0');
+    const s=String(videoSeconds%60).padStart(2,'0');
+    const el=document.getElementById('video-timer');
+    if(el) el.textContent=m+':'+s;
+  },1000);
+  // 버튼 상태 초기화
+  document.getElementById('vc-mute').textContent='🎤';
+  document.getElementById('vc-cam').textContent='📷';
+}
+
+function hideVideoOverlay(){
+  document.getElementById('videoOverlay').classList.remove('show');
+  if(videoTimer){clearInterval(videoTimer);videoTimer=null;}
+}
+
+function hangUpVideo(writeDB=true){
+  hideIncoming();
+  if(writeDB && callRef) callRef.update({status:'ended'});
+  if(callPeer && callState==='incall'){
+    const k=mkey(me,callPeer);
+    db.ref('msgs/'+k).push({from:me,type:'calllog',text:'📹 영상통화 종료',ts:Date.now()});
+  }
+  hideVideoOverlay();
+  cleanupCall();
+}
+
+function toggleVMute(){
+  if(!localStream) return;
+  vMuted=!vMuted;
+  localStream.getAudioTracks().forEach(t=>t.enabled=!vMuted);
+  document.getElementById('vc-mute').textContent=vMuted?'🔇':'🎤';
+  document.getElementById('vc-mute').classList.toggle('active',vMuted);
+}
+
+function toggleVCam(){
+  if(!localStream) return;
+  vCamOff=!vCamOff;
+  localStream.getVideoTracks().forEach(t=>t.enabled=!vCamOff);
+  document.getElementById('vc-cam').textContent=vCamOff?'🚫':'📷';
+  document.getElementById('vc-cam').classList.toggle('active',vCamOff);
 }
 
 function updateCallBar(text='',cls=''){
@@ -441,10 +584,12 @@ function updateCallBar(text='',cls=''){
   if(!bar) return;
   // 통화 버튼 토글
   const btnStart=document.getElementById('btn-call-start');
+  const btnVStart=document.getElementById('btn-vcall-start');
   const btnEnd=document.getElementById('btn-call-end');
   const active=!!text;
-  if(btnStart) btnStart.style.display=active?'none':'flex';
-  if(btnEnd)   btnEnd.style.display=active?'flex':'none';
+  if(btnStart)  btnStart.style.display=active?'none':'flex';
+  if(btnVStart) btnVStart.style.display=active?'none':'flex';
+  if(btnEnd)    btnEnd.style.display=active?'flex':'none';
   if(!text){bar.classList.remove('show','ringing');return;}
   bar.textContent=text;
   bar.className='';
@@ -548,8 +693,11 @@ function renderApp(){
     <div class="chat-top">
       <div class="av ${acct(peer).c}">${acct(peer).label.slice(0,2)}</div>
       <div class="chat-top-name">${acct(peer).label}</div>
-      <button class="call-btn start" onclick="startCall()" title="음성통화" id="btn-call-start" style="${inCall?'display:none':''}">
+      <button class="call-btn start" onclick="startCall(false)" title="음성통화" id="btn-call-start" style="${inCall?'display:none':''}">
             <svg viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+           </button>
+      <button class="vcall-btn" onclick="startCall(true)" title="영상통화" id="btn-vcall-start" style="${inCall?'display:none':''}">
+            <svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
            </button>
       <button class="call-btn end" onclick="hangUp(true)" title="통화 종료" id="btn-call-end" style="${inCall?'':'display:none'}">
             <svg viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
