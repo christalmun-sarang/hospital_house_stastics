@@ -118,6 +118,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .admin-cancel{padding:9px 14px;background:#f0f0f0;color:#555;border:none;border-radius:7px;font-size:12px;cursor:pointer;}
 .admin-msg{font-size:11px;color:#1D9E75;text-align:center;height:16px;margin-top:6px;}
 .admin-btn-top{font-size:10px;background:#f0efff;color:#534AB7;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-weight:600;}
+/* 탭 */
+.admin-tabs{display:flex;border-bottom:1.5px solid #eee;margin-bottom:14px;}
+.admin-tab{flex:1;padding:8px 4px;font-size:12px;font-weight:600;background:none;border:none;cursor:pointer;color:#aaa;border-bottom:2px solid transparent;margin-bottom:-1.5px;}
+.admin-tab.on{color:#534AB7;border-bottom-color:#534AB7;}
+.admin-pane{display:none;}.admin-pane.on{display:block;}
+/* 통화기록 */
+.clog-list{max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
+.clog-item{background:#f7f7fb;border-radius:9px;padding:11px 12px;font-size:11px;}
+.clog-head{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
+.clog-type{font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;background:#534AB7;color:#fff;}
+.clog-type.video{background:#7c3aed;}
+.clog-name{font-weight:700;color:#1a1a2e;flex:1;}
+.clog-date{font-size:10px;color:#aaa;}
+.clog-time{color:#534AB7;font-weight:600;}
+.clog-memo{margin-top:5px;color:#444;background:#fff;border-radius:6px;padding:5px 8px;font-size:11px;line-height:1.4;}
+.clog-empty{text-align:center;color:#bbb;padding:30px 0;font-size:12px;}
+/* 진료 메모 모달 */
+#memoModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10100;align-items:center;justify-content:center;}
+#memoModal.show{display:flex;}
+.memo-card{background:#fff;border-radius:14px;padding:22px 20px;width:290px;box-shadow:0 8px 32px rgba(0,0,0,0.2);}
+.memo-card h3{font-size:13px;font-weight:700;color:#1a1a2e;margin-bottom:4px;}
+.memo-card .memo-sub{font-size:11px;color:#888;margin-bottom:12px;}
+.memo-card textarea{width:100%;height:90px;font-size:12px;padding:8px 10px;border-radius:8px;border:1.5px solid #e0e0e0;outline:none;resize:none;line-height:1.5;}
+.memo-card textarea:focus{border-color:#534AB7;}
+.memo-btns{display:flex;gap:8px;margin-top:10px;}
+.memo-save{flex:1;padding:9px;background:#534AB7;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;}
+.memo-skip{padding:9px 14px;background:#f0f0f0;color:#555;border:none;border-radius:7px;font-size:12px;cursor:pointer;}
 </style>
 </head>
 <body>
@@ -144,27 +171,52 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div>
 <!-- 관리자 모달 -->
 <div id="adminModal">
-  <div class="admin-card">
-    <h3>⚙️ 계정 관리</h3>
-    <div class="admin-section">
-      <div class="admin-section-title">약국 계정</div>
-      <div class="admin-row"><label>표시 이름</label><input id="adm-label-yak" type="text" placeholder="예: 약국"/></div>
-      <div class="admin-row"><label>비밀번호</label><input id="adm-pw-yak" type="text" placeholder="새 비밀번호"/></div>
+  <div class="admin-card" style="width:320px;max-height:90vh;overflow-y:auto;">
+    <div class="admin-tabs">
+      <button class="admin-tab on" onclick="switchAdminTab('accounts')">⚙️ 계정</button>
+      <button class="admin-tab" onclick="switchAdminTab('logs')">📋 통화기록</button>
     </div>
-    <div class="admin-section">
-      <div class="admin-section-title">접수 계정 A</div>
-      <div class="admin-row"><label>표시 이름</label><input id="adm-label1" type="text" placeholder="예: 간호사1"/></div>
-      <div class="admin-row"><label>비밀번호</label><input id="adm-pw1" type="text" placeholder="새 비밀번호"/></div>
+    <!-- 계정 관리 탭 -->
+    <div class="admin-pane on" id="adm-pane-accounts">
+      <div class="admin-section">
+        <div class="admin-section-title">약국 계정</div>
+        <div class="admin-row"><label>표시 이름</label><input id="adm-label-yak" type="text" placeholder="예: 약국"/></div>
+        <div class="admin-row"><label>비밀번호</label><input id="adm-pw-yak" type="text" placeholder="새 비밀번호"/></div>
+      </div>
+      <div class="admin-section">
+        <div class="admin-section-title">접수 계정 A</div>
+        <div class="admin-row"><label>표시 이름</label><input id="adm-label1" type="text" placeholder="예: 간호사1"/></div>
+        <div class="admin-row"><label>비밀번호</label><input id="adm-pw1" type="text" placeholder="새 비밀번호"/></div>
+      </div>
+      <div class="admin-section">
+        <div class="admin-section-title">접수 계정 B</div>
+        <div class="admin-row"><label>표시 이름</label><input id="adm-label2" type="text" placeholder="예: 간호사2"/></div>
+        <div class="admin-row"><label>비밀번호</label><input id="adm-pw2" type="text" placeholder="새 비밀번호"/></div>
+      </div>
+      <div class="admin-msg" id="adm-msg"></div>
+      <div class="admin-btns">
+        <button class="admin-cancel" onclick="closeAdmin()">취소</button>
+        <button class="admin-save" onclick="saveAdmin()">저장</button>
+      </div>
     </div>
-    <div class="admin-section">
-      <div class="admin-section-title">접수 계정 B</div>
-      <div class="admin-row"><label>표시 이름</label><input id="adm-label2" type="text" placeholder="예: 간호사2"/></div>
-      <div class="admin-row"><label>비밀번호</label><input id="adm-pw2" type="text" placeholder="새 비밀번호"/></div>
+    <!-- 통화기록 탭 -->
+    <div class="admin-pane" id="adm-pane-logs">
+      <div id="clog-list" class="clog-list"><div class="clog-empty">불러오는 중...</div></div>
+      <div class="admin-btns" style="margin-top:12px;">
+        <button class="admin-cancel" onclick="closeAdmin()">닫기</button>
+      </div>
     </div>
-    <div class="admin-msg" id="adm-msg"></div>
-    <div class="admin-btns">
-      <button class="admin-cancel" onclick="closeAdmin()">취소</button>
-      <button class="admin-save" onclick="saveAdmin()">저장</button>
+  </div>
+</div>
+<!-- 진료 메모 모달 -->
+<div id="memoModal">
+  <div class="memo-card">
+    <h3>📝 진료 메모</h3>
+    <div class="memo-sub" id="memo-sub">통화 후 메모를 남겨주세요 (선택)</div>
+    <textarea id="memo-text" placeholder="진료 내용, 특이사항 등..."></textarea>
+    <div class="memo-btns">
+      <button class="memo-skip" onclick="saveMemo(false)">건너뛰기</button>
+      <button class="memo-save" onclick="saveMemo(true)">저장</button>
     </div>
   </div>
 </div>
@@ -296,6 +348,8 @@ let callId=null;      // 현재 통화 id
 let isVideo=false;    // 현재 통화가 영상통화인지
 let videoTimer=null;  // 통화 시간 타이머
 let videoSeconds=0;   // 통화 경과 시간
+let callStartTs=0;    // 통화 시작 타임스탬프
+let pendingLogId=null;// 메모 저장 대기 중인 로그 ID
 let vMuted=false;     // 음소거 상태
 let vCamOff=false;    // 카메라 끔 상태
 
@@ -506,12 +560,23 @@ function rejectCall(){
 function hangUp(writeDB=true){
   hideIncoming();
   if(writeDB && callRef) callRef.update({status:'ended'});
-  // 통화 기록 메시지
   if(callPeer && callState==='incall'){
     const k=mkey(me,callPeer);
-    db.ref('msgs/'+k).push({from:me,type:'calllog',text:'📞 통화 종료',ts:Date.now()});
+    const dur=callStartTs?Math.floor((Date.now()-callStartTs)/1000):0;
+    const endTs=Date.now();
+    db.ref('msgs/'+k).push({from:me,type:'calllog',text:'📞 통화 종료 ('+fmtDur(dur)+')',ts:endTs});
+    // 통화기록 Firebase 저장
+    const logRef=db.ref('calllogs').push({
+      caller:me, callee:callPeer,
+      callerLabel:acct(me)?.label||me, calleeLabel:acct(callPeer)?.label||callPeer,
+      type:'voice', startTs:callStartTs||endTs, endTs, duration:dur, memo:'', ts:endTs
+    });
+    pendingLogId=logRef.key;
+    cleanupCall();
+    if(isAdmin(me)) showMemoModal(callPeer, dur, false);
+  } else {
+    cleanupCall();
   }
-  cleanupCall();
 }
 
 function cleanupCall(){
@@ -526,8 +591,73 @@ function cleanupCall(){
   if(callRef){callRef.off();callRef=null;}
   if(videoTimer){clearInterval(videoTimer);videoTimer=null;}
   videoSeconds=0; vMuted=false; vCamOff=false; isVideo=false;
+  callStartTs=0;
   callState='idle'; callPeer=null; callId=null;
   updateCallBar();
+}
+
+// 시간 포맷
+function fmtDur(sec){
+  if(!sec) return '0초';
+  const m=Math.floor(sec/60), s=sec%60;
+  return m>0 ? m+'분 '+s+'초' : s+'초';
+}
+function fmtTs(ts){
+  return new Date(ts).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+
+// 진료 메모 모달
+let _memoTarget=null;
+function showMemoModal(uid, dur, vid){
+  _memoTarget={uid,dur,vid};
+  const label=acct(uid)?.label||uid;
+  document.getElementById('memo-sub').textContent=
+    (vid?'📹 영상':'📞 음성')+' '+label+' · '+fmtDur(dur);
+  document.getElementById('memo-text').value='';
+  document.getElementById('memoModal').classList.add('show');
+  setTimeout(()=>document.getElementById('memo-text').focus(),100);
+}
+function saveMemo(doSave){
+  document.getElementById('memoModal').classList.remove('show');
+  if(doSave && pendingLogId){
+    const memo=document.getElementById('memo-text').value.trim();
+    if(memo) db.ref('calllogs/'+pendingLogId).update({memo});
+  }
+  pendingLogId=null; _memoTarget=null;
+}
+
+// 관리 탭 전환
+function switchAdminTab(tab){
+  document.querySelectorAll('.admin-tab').forEach((b,i)=>{
+    b.classList.toggle('on', (i===0&&tab==='accounts')||(i===1&&tab==='logs'));
+  });
+  document.getElementById('adm-pane-accounts').classList.toggle('on', tab==='accounts');
+  document.getElementById('adm-pane-logs').classList.toggle('on', tab==='logs');
+  if(tab==='logs') loadCallLogs();
+}
+
+// 통화기록 로드
+function loadCallLogs(){
+  const el=document.getElementById('clog-list');
+  el.innerHTML='<div class="clog-empty">불러오는 중...</div>';
+  db.ref('calllogs').orderByChild('ts').limitToLast(50).once('value',snap=>{
+    const logs=[];
+    snap.forEach(ch=>logs.unshift({id:ch.key,...ch.val()}));
+    if(!logs.length){el.innerHTML='<div class="clog-empty">통화 기록이 없습니다.</div>';return;}
+    el.innerHTML=logs.map(l=>{
+      const isVid=l.type==='video';
+      const other=(l.caller==='wonjang'||l.caller==='nam')?l.calleeLabel:l.callerLabel;
+      return `<div class="clog-item">
+        <div class="clog-head">
+          <span class="clog-type${isVid?' video':''}">${isVid?'영상':'음성'}</span>
+          <span class="clog-name">${other}</span>
+          <span class="clog-date">${fmtTs(l.startTs)}</span>
+        </div>
+        <div class="clog-time">⏱ ${fmtDur(l.duration)}</div>
+        ${l.memo?`<div class="clog-memo">📝 ${l.memo}</div>`:''}
+      </div>`;
+    }).join('');
+  });
 }
 
 // 영상통화 오버레이 표시
@@ -535,6 +665,7 @@ function showVideoOverlay(uid){
   document.getElementById('video-peer-name').textContent=acct(uid)?.label||uid;
   document.getElementById('video-status').textContent='';
   document.getElementById('videoOverlay').classList.add('show');
+  callStartTs=Date.now();
   videoSeconds=0;
   if(videoTimer) clearInterval(videoTimer);
   videoTimer=setInterval(()=>{
@@ -559,10 +690,22 @@ function hangUpVideo(writeDB=true){
   if(writeDB && callRef) callRef.update({status:'ended'});
   if(callPeer && callState==='incall'){
     const k=mkey(me,callPeer);
-    db.ref('msgs/'+k).push({from:me,type:'calllog',text:'📹 영상통화 종료',ts:Date.now()});
+    const dur=videoSeconds||0;
+    const endTs=Date.now();
+    db.ref('msgs/'+k).push({from:me,type:'calllog',text:'📹 영상통화 종료 ('+fmtDur(dur)+')',ts:endTs});
+    const logRef=db.ref('calllogs').push({
+      caller:me, callee:callPeer,
+      callerLabel:acct(me)?.label||me, calleeLabel:acct(callPeer)?.label||callPeer,
+      type:'video', startTs:callStartTs||endTs, endTs, duration:dur, memo:'', ts:endTs
+    });
+    pendingLogId=logRef.key;
+    hideVideoOverlay();
+    cleanupCall();
+    if(isAdmin(me)) showMemoModal(callPeer, dur, true);
+  } else {
+    hideVideoOverlay();
+    cleanupCall();
   }
-  hideVideoOverlay();
-  cleanupCall();
 }
 
 function toggleVMute(){
@@ -596,6 +739,7 @@ function updateCallBar(text='',cls=''){
   bar.textContent=text;
   bar.className='';
   bar.classList.add(cls==='ringing'?'ringing':'show');
+  if(cls==='show' && !isVideo && !callStartTs) callStartTs=Date.now();
 }
 
 /* ════════════════════════════
@@ -623,6 +767,8 @@ function pickUser(id){
   document.querySelectorAll('.user-btn').forEach(b=>b.classList.toggle('sel',b.textContent===acct(id)?.label));
   setTimeout(()=>document.getElementById('pw')?.focus(),50);
 }
+const TEMP_IDS=['jesu1','jesu2']; // 로그인마다 대화 초기화할 계정
+
 function doLogin(){
   if(!selId){showLogin('소속을 선택해주세요.');return;}
   const pw=document.getElementById('pw')?.value||'';
@@ -630,7 +776,17 @@ function doLogin(){
   if(!a||pw!==a.pw){showLogin('비밀번호가 맞지 않습니다.');return;}
   me=selId;localStorage.setItem('sarang_me',me);
   unread={};peer=null;setMeBadge(a.label);
-  initUnreadThenRender();
+  // 접수1·접수2는 로그인 시 원장과의 대화 내용 초기화
+  if(TEMP_IDS.includes(me)){
+    const chatKey='msgs/'+mkey(me,'wonjang');
+    db.ref(chatKey).remove().then(()=>{
+      // 읽음 기록도 초기화
+      localStorage.removeItem(lrKey('wonjang'));
+      initUnreadThenRender();
+    }).catch(()=>initUnreadThenRender());
+  } else {
+    initUnreadThenRender();
+  }
 }
 function doLogout(){
   hangUp();stopChat();stopBadge();
