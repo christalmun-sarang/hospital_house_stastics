@@ -39,6 +39,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .u-name{font-size:12px;font-weight:500;color:#1a1a2e;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .badge{background:#E53E3E;color:#fff;border-radius:8px;font-size:9px;padding:1px 5px;font-weight:700;}
 .av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;}
+.av-wrap{position:relative;flex-shrink:0;}
+.online-dot{position:absolute;bottom:0;right:0;width:8px;height:8px;border-radius:50%;background:#ccc;border:1.5px solid #fff;}
+.online-dot.on{background:#1D9E75;}
+.call-btn.start:disabled,.vcall-btn:disabled{opacity:0.35;cursor:not-allowed;}
 .sm{width:22px;height:22px;font-size:9px;}
 .c0{background:#EEEDFE;color:#3C3489;}.c1{background:#E1F5EE;color:#085041;}
 .c2{background:#FAECE7;color:#712B13;}.c3{background:#E6F1FB;color:#0C447C;}
@@ -380,6 +384,52 @@ const RTC_CONFIG={iceServers:[
 ]};
 
 let me=null,peer=null,selId=null,unread={},chatRef=null,badgeListeners={};
+let onlineUsers={};  // {uid: true/false}
+let presenceListeners=[];
+
+// 내 온라인 상태 Firebase에 등록
+function registerPresence(){
+  if(!me) return;
+  const ref=db.ref('presence/'+me);
+  ref.set(true);
+  ref.onDisconnect().remove();
+  // 브라우저 닫힐 때 대비 beforeunload
+  window.addEventListener('beforeunload',()=>ref.remove());
+}
+
+// 전체 사용자 온라인 상태 실시간 구독
+function startPresenceListener(){
+  stopPresenceListeners();
+  ACCOUNTS.forEach(u=>{
+    if(u.id===me) return;
+    const ref=db.ref('presence/'+u.id);
+    const handler=ref.on('value',snap=>{
+      onlineUsers[u.id]=!!snap.val();
+      // 사이드바 점 업데이트
+      const dot=document.getElementById('dot_'+u.id);
+      if(dot) dot.className='online-dot'+(onlineUsers[u.id]?' on':'');
+      // 선택된 상대면 통화버튼 상태도 갱신
+      if(peer===u.id) updateCallButtons();
+    });
+    presenceListeners.push({ref,handler});
+  });
+}
+function stopPresenceListeners(){
+  presenceListeners.forEach(({ref,handler})=>ref.off('value',handler));
+  presenceListeners=[];
+}
+
+function updateCallButtons(){
+  const online=peer?onlineUsers[peer]:false;
+  const btnS=document.getElementById('btn-call-start');
+  const btnV=document.getElementById('btn-vcall-start');
+  if(btnS) btnS.disabled=!online;
+  if(btnV) btnV.disabled=!online;
+  // 툴팁
+  const tip=online?'':'상대방이 오프라인입니다';
+  if(btnS) btnS.title=online?'음성통화':tip;
+  if(btnV) btnV.title=online?'영상통화':tip;
+}
 
 // WebRTC
 let pc=null;          // RTCPeerConnection
@@ -873,6 +923,7 @@ function doLogin(){
   if(!a||pw!==a.pw){showLogin('비밀번호가 맞지 않습니다.');return;}
   me=selId;localStorage.setItem('sarang_me',me);
   unread={};peer=null;setMeBadge(a.label);
+  registerPresence();
   // 접수1·접수2는 로그인 시 원장과의 대화 내용 초기화
   if(GUEST_IDS.includes(me)){
     const chatKey='msgs/'+mkey(me,'wonjang');
@@ -886,14 +937,15 @@ function doLogin(){
   }
 }
 function doLogout(){
-  hangUp();stopChat();stopBadge();
-  me=null;peer=null;unread={};
+  hangUp();stopChat();stopBadge();stopPresenceListeners();
+  if(me) db.ref('presence/'+me).remove();
+  me=null;peer=null;unread={};onlineUsers={};
   localStorage.removeItem('sarang_me');showLogin();
 }
 
 function initUnreadThenRender(){
   const others=ACCOUNTS.filter(a=>a.id!==me);
-  if(!others.length){sanitizePeer();renderApp();startBadgeListeners();startCallListener();return;}
+  if(!others.length){sanitizePeer();renderApp();startBadgeListeners();startCallListener();startPresenceListener();return;}
   let done=0;
   others.forEach(u=>{
     const lr=getLR(u.id);
@@ -901,7 +953,7 @@ function initUnreadThenRender(){
       let c=0;
       snap.forEach(ch=>{const m=ch.val();if(m&&typeof m==='object'&&m.from===u.id&&m.ts>lr)c++;});
       unread[u.id]=c;done++;
-      if(done===others.length){sanitizePeer();renderApp();startBadgeListeners();startCallListener();}
+      if(done===others.length){sanitizePeer();renderApp();startBadgeListeners();startCallListener();startPresenceListener();}
     });
   });
 }
@@ -947,7 +999,10 @@ function renderApp(){
   // 관리 버튼: 전체관리자=⚙️관리, 직원=👤접수관리
   const sideHtml=others.map(u=>`
     <div class="uitem${peer===u.id?' active':''}" onclick="selectPeer('${u.id}')">
-      <div class="av ${u.c}">${u.label.slice(0,2)}</div>
+      <div class="av-wrap">
+        <div class="av ${u.c}">${u.label.slice(0,2)}</div>
+        <span class="online-dot${onlineUsers[u.id]?' on':''}" id="dot_${u.id}"></span>
+      </div>
       <div class="u-name">${u.label}</div>
       <span id="bdg_${u.id}">${(unread[u.id]||0)>0?`<span class="badge">${unread[u.id]}</span>`:''}</span>
     </div>`).join('');
@@ -955,14 +1010,18 @@ function renderApp(){
   const canCall=peer&&callState==='idle';
   const inCall=callState==='incall'||callState==='calling';
 
+  const peerOnline=peer?onlineUsers[peer]:false;
   const chatHtml=peer?`
     <div class="chat-top">
-      <div class="av ${acct(peer).c}">${acct(peer).label.slice(0,2)}</div>
-      <div class="chat-top-name">${acct(peer).label}</div>
-      <button class="call-btn start" onclick="startCall(false)" title="음성통화" id="btn-call-start" style="${inCall?'display:none':''}">
+      <div class="av-wrap">
+        <div class="av ${acct(peer).c}">${acct(peer).label.slice(0,2)}</div>
+        <span class="online-dot${peerOnline?' on':''}" id="dot_top_${peer}"></span>
+      </div>
+      <div class="chat-top-name">${acct(peer).label} <span style="font-size:10px;font-weight:400;color:${peerOnline?'#1D9E75':'#aaa'}">${peerOnline?'● 접속중':'● 오프라인'}</span></div>
+      <button class="call-btn start" onclick="startCall(false)" title="${peerOnline?'음성통화':'오프라인 - 통화불가'}" id="btn-call-start" ${!peerOnline?'disabled':''} style="${inCall?'display:none':''}">
             <svg viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
            </button>
-      <button class="vcall-btn" onclick="startCall(true)" title="영상통화" id="btn-vcall-start" style="${inCall?'display:none':''}">
+      <button class="vcall-btn" onclick="startCall(true)" title="${peerOnline?'영상통화':'오프라인 - 통화불가'}" id="btn-vcall-start" ${!peerOnline?'disabled':''} style="${inCall?'display:none':''}">
             <svg viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
            </button>
       <button class="call-btn end" onclick="hangUp(true)" title="통화 종료" id="btn-call-end" style="${inCall?'':'display:none'}">
@@ -1107,7 +1166,7 @@ function uploadFile(input){
     else if(document.querySelector('.sidebar')) renderApp();
   });
   const saved=localStorage.getItem('sarang_me');
-  if(saved&&acct(saved)){me=saved;setMeBadge(acct(saved).label);unread={};initUnreadThenRender();}
+  if(saved&&acct(saved)){me=saved;setMeBadge(acct(saved).label);unread={};registerPresence();initUnreadThenRender();}
   else showLogin();
 })();
 </script>
