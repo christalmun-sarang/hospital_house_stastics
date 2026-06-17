@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>병원 가계 통계</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f0; color: #1a1a18; min-height: 100vh; }
+
+/* ── 헤더 & 탭 ── */
+.header { background: #fff; border-bottom: 0.5px solid #ddddd5; padding: 14px 24px 0; }
+.header-top { display: flex; align-items: center; margin-bottom: 10px; }
+.header h1 { font-size: 18px; font-weight: 500; }
+.header .subtitle { font-size: 12px; color: #888780; margin-top: 2px; }
+.tabs { display: flex; gap: 0; border-bottom: none; }
+.tab { padding: 9px 22px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; background: none;
+  color: #888780; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; }
+.tab:hover { color: #1a1a18; }
+.tab.active { color: #1a1a18; border-bottom-color: #1a1a18; }
+
+/* ── 서브탭 (데이터입력 내) ── */
+.subtabs { background: #fff; border-bottom: 0.5px solid #ddddd5; padding: 0 24px; display: flex; gap: 0; }
+.subtab { padding: 8px 18px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: none;
+  color: #888780; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; }
+.subtab:hover { color: #1a1a18; }
+.subtab.active { color: #185fa5; border-bottom-color: #185fa5; }
+
+.status-bar { padding: 7px 24px; font-size: 13px; }
+.status-bar.success { background: #eaf3de; color: #3b6d11; }
+.status-bar.error   { background: #fcebeb; color: #a32d2d; }
+.status-bar.loading { background: #e6f1fb; color: #185fa5; }
+
+.page { display: none; }
+.page.active { display: block; }
+.subpage { display: none; }
+.subpage.active { display: block; }
+.gensubpage { display: none; }
+.gensubpage.active { display: block; }
+.main { padding: 20px 24px; max-width: 1200px; margin: 0 auto; }
+
+/* ── 폼 공통 ── */
+select, input[type=text], input[type=number], input[type=date], input[type=month] {
+  border: 0.5px solid #b4b2a9; border-radius: 8px; padding: 7px 12px;
+  font-size: 14px; background: #fff; color: #1a1a18; width: 100%;
+}
+select:focus, input:focus { outline: 2px solid #185fa5; outline-offset: 1px; }
+button { border: 0.5px solid #1a1a18; border-radius: 8px; padding: 8px 18px; font-size: 14px; background: #1a1a18; color: #fff; font-weight: 500; cursor: pointer; }
+button:hover { background: #333; }
+button.secondary { background: #fff; color: #1a1a18; border-color: #b4b2a9; }
+button.secondary:hover { background: #f5f5f0; }
+button.danger { background: #fff; color: #a32d2d; border-color: #f09595; }
+button.danger:hover { background: #fcebeb; }
+button.add-btn { background: #fff; color: #185fa5; border-color: #85b7eb; font-size: 13px; padding: 5px 12px; }
+button.add-btn:hover { background: #e6f1fb; }
+
+/* ── 일별 데이터 입력 ── */
+.form-card { background: #fff; border: 0.5px solid #ddddd5; border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; }
+.form-card h2 { font-size: 15px; font-weight: 500; margin-bottom: 16px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.form-field label { display: block; font-size: 12px; color: #888780; margin-bottom: 5px; }
+.form-actions { display: flex; gap: 10px; margin-top: 18px; align-items: center; flex-wrap: wrap; }
+.form-msg { font-size: 13px; }
+.form-msg.ok { color: #3b6d11; }
+.form-msg.err { color: #a32d2d; }
+
+/* ── 매출/지출 입력 공통 ── */
+.ie-form-card { background: #fff; border: 0.5px solid #ddddd5; border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; }
+.ie-form-card h2 { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+.ie-form-card .month-row { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.ie-form-card .month-row label { font-size: 13px; color: #888780; white-space: nowrap; }
+
+.section-title { font-size: 13px; font-weight: 600; color: #444441; margin: 16px 0 10px; padding-bottom: 6px; border-bottom: 0.5px solid #ddddd5; display: flex; justify-content: space-between; align-items: center; }
+.section-title .total-badge { font-size: 12px; font-weight: 400; background: #f1efe8; padding: 2px 10px; border-radius: 20px; color: #444441; }
+.last-saved { font-size: 12px; font-weight: 400; color: #888780; }
+
+.ie-row { display: grid; grid-template-columns: 140px 52px 160px 1fr 28px; gap: 6px; align-items: center; margin-bottom: 7px; }
+.ie-row .item-name { font-size: 13px; color: #1a1a18; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ie-row .badge-type { font-size: 11px; padding: 2px 7px; border-radius: 12px; white-space: nowrap; }
+.ie-row .note-input { font-size: 12px; color: #444441; border-color: #ddddd5; background: #fafaf8; padding: 6px 10px; }
+.ie-row .note-input::placeholder { color: #b4b2a9; }
+.badge-fixed { background: #e6f1fb; color: #185fa5; }
+.badge-var   { background: #f1efe8; color: #888780; }
+.ie-row input[type=number] { text-align: right; font-variant-numeric: tabular-nums; }
+.ie-row .del-btn { background: none; border: none; color: #ccc; font-size: 16px; cursor: pointer; padding: 0; }
+.ie-row .del-btn:hover { color: #a32d2d; }
+
+.net-summary { background: #f1efe8; border-radius: 10px; padding: 14px 20px; margin-top: 16px; display: flex; gap: 32px; flex-wrap: wrap; align-items: center; }
+.net-summary .ns-item { text-align: center; }
+.net-summary .ns-label { font-size: 12px; color: #888780; margin-bottom: 4px; }
+.net-summary .ns-value { font-size: 20px; font-weight: 500; }
+.ns-value.positive { color: #3b6d11; }
+.ns-value.negative { color: #a32d2d; }
+
+/* ── 최근 데이터 테이블 ── */
+.recent-card { background: #fff; border: 0.5px solid #ddddd5; border-radius: 12px; padding: 20px 24px; }
+.recent-card h2 { font-size: 15px; font-weight: 500; margin-bottom: 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: #888780; font-weight: 500; padding: 6px 8px; border-bottom: 0.5px solid #ddddd5; }
+td { padding: 8px 8px; border-bottom: 0.5px solid #f1efe8; }
+tr:last-child td { border-bottom: none; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr:hover td { background: #f5f5f0; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+.badge-sun { background: #fcebeb; color: #a32d2d; }
+
+/* ── 통계 ── */
+.controls { background: #fff; border-bottom: 0.5px solid #ddddd5; padding: 10px 24px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.ctrl-label { font-size: 13px; color: #888780; }
+.controls select { width: auto; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.metric-card { background: #f1efe8; border-radius: 8px; padding: 14px 16px; }
+.metric-card .mlabel { font-size: 12px; color: #888780; margin-bottom: 4px; }
+.metric-card .mvalue { font-size: 22px; font-weight: 500; }
+.metric-card .msub { font-size: 12px; color: #888780; margin-top: 2px; }
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+@media (max-width: 700px) { .chart-grid { grid-template-columns: 1fr; } }
+.chart-card { background: #fff; border: 0.5px solid #ddddd5; border-radius: 12px; padding: 16px 18px; }
+.chart-card h3 { font-size: 14px; font-weight: 500; margin-bottom: 14px; color: #444441; }
+.chart-card.wide { grid-column: 1 / -1; }
+.table-card { background: #fff; border: 0.5px solid #ddddd5; border-radius: 12px; padding: 16px 18px; margin-bottom: 20px; }
+.table-card h3 { font-size: 14px; font-weight: 500; margin-bottom: 14px; color: #444441; }
+
+#loading-overlay { display: none; position: fixed; inset: 0; background: rgba(255,255,255,0.85); align-items: center; justify-content: center; z-index: 200; flex-direction: column; gap: 12px; }
+#loading-overlay.visible { display: flex; }
+.spinner { width: 32px; height: 32px; border: 3px solid #ddddd5; border-top-color: #1a1a18; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── 가계통계 ── */
+#page-household .metric-card .mvalue { font-size: 18px; }
+.hh-source { font-size: 11px; padding: 1px 6px; border-radius: 10px; }
+.hh-src-ie { background: #e6f1fb; color: #185fa5; }
+.hh-src-mf { background: #eaf3de; color: #3b6d11; }
+.hh-src-both { background: #f1efe8; color: #888780; }
+
+/* ── 가계통계 자산 ── */
+.gahye-section { display: none; }
+.gahye-section:first-of-type { display: block; }
+.asset-section { background:#fff; border:0.5px solid #ddddd5; border-radius:12px; padding:18px 22px; margin-bottom:16px; }
+.asset-section h3 { font-size:14px; font-weight:600; margin-bottom:14px; color:#444441; display:flex; justify-content:space-between; align-items:center; }
+.asset-section h3 .total-val { font-size:18px; font-weight:500; color:#185fa5; }
+.asset-row { display:grid; grid-template-columns:130px 1fr 160px 28px; gap:8px; align-items:center; margin-bottom:8px; }
+.asset-row .aname { font-size:13px; color:#1a1a18; }
+.asset-row input[type=number] { text-align:right; font-variant-numeric:tabular-nums; border:0.5px solid #b4b2a9; border-radius:8px; padding:7px 12px; font-size:14px; }
+.asset-abcd { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
+.abcd-card { border-radius:10px; padding:14px 18px; text-align:center; }
+.abcd-card.a { background:#e6f1fb; } .abcd-card.b { background:#eaf3de; }
+.abcd-card.c { background:#fdf3e3; } .abcd-card.d { background:#f1efe8; border:2px solid #b4b2a9; }
+.abcd-card .aclabel { font-size:12px; color:#888780; margin-bottom:4px; }
+.abcd-card .acvalue { font-size:20px; font-weight:500; }
+.asset-mission { background:#fcebeb; border-radius:8px; padding:10px 16px; font-size:13px; color:#a32d2d; margin-top:8px; }
+</style>
+</head>
+<body>
+
+<div id="loading-overlay"><div class="spinner"></div><span style="font-size:14px;color:#888780;">처리 중...</span></div>
+
+<!-- ── 헤더 ── -->
+<div class="header">
+  <div class="header-top"><div><h1>🏥 병원 가계 통계</h1><div class="subtitle">daily_han · Supabase</div></div></div>
+  <div class="tabs">
+    <button class="tab active" onclick="showPage('gen',this)">데이터 생성</button>
+
+  </div>
+</div>
+<div id="status-bar" class="status-bar loading">⏳ 연결 중...</div>
+
+
+<!-- ════════════════════════════════
+     데이터 생성 페이지
+════════════════════════════════ -->
+<div id="page-gen" class="page active">
+  <div class="subtabs">
+    <button class="subtab active" onclick="showGenSubpage('hangang-daily',this)">한강일일통계생성</button>
+    <button class="subtab" onclick="showGenSubpage('house-monthly',this)">병원한달통계생성</button>
+  </div>
+
+  <!-- 서브: 한강일일통계생성 (daily_han) -->
+  <div id="gensub-hangang-daily" class="gensubpage active">
+    <div class="main">
+      <div class="form-card">
+        <h2>일별 데이터 입력</h2>
+        <div class="form-grid">
+          <div class="form-field"><label>날짜 *</label><input type="date" id="g-date"></div>
+          <div class="form-field"><label>요일</label><input type="text" id="g-dow" readonly style="background:#f5f5f0;color:#888780;"></div>
+          <div class="form-field"><label>총 환자수</label><input type="number" id="g-total" min="0" placeholder="0"></div>
+          <div class="form-field"><label>초진</label><input type="number" id="g-new" min="0" placeholder="0"></div>
+          <div class="form-field"><label>재진</label><input type="number" id="g-return" min="0" placeholder="0"></div>
+          <div class="form-field"><label>일매출 (원)</label><input type="number" id="g-revenue" min="0" placeholder="0"></div>
+          <div class="form-field"><label>현금 (원)</label><input type="number" id="g-cash" min="0" placeholder="0"></div>
+          <div class="form-field"><label>카드 (원)</label><input type="number" id="g-card" min="0" placeholder="0"></div>
+          <div class="form-field"><label>청구액 (원)</label><input type="number" id="g-claim" min="0" placeholder="0"></div>
+          <div class="form-field"><label>입금액 (원)</label><input type="number" id="g-deposit" min="0" placeholder="0"></div>
+        </div>
+        <div class="form-actions">
+          <button onclick="saveHangangDaily()">저장</button>
+          <button class="secondary" onclick="clearHangangDailyForm()">초기화</button>
+          <span id="gen-form-msg" class="form-msg"></span>
+        </div>
+      </div>
+      <div class="recent-card">
+        <h2>최근 입력 데이터 <span style="font-size:12px;font-weight:400;color:#888780;">(최근 20일 · daily_han)</span></h2>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr>
+              <th>날짜</th><th>요일</th><th class="num">환자</th><th class="num">초진</th><th class="num">재진</th>
+              <th class="num">매출</th><th class="num">현금</th><th class="num">카드</th><th class="num">청구액</th><th class="num">입금액</th><th></th>
+            </tr></thead>
+            <tbody id="gen-recent-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 서브: 병원한달통계생성 (monthly_house) -->
+  <div id="gensub-house-monthly" class="gensubpage">
+    <div class="main">
+      <div class="ie-form-card">
+        <h2>병원 월별 매출·지출</h2>
+        <div class="month-row">
+          <label>입력 월:</label>
+          <input type="month" id="hm-month" style="width:auto;">
+          <button class="secondary" onclick="loadHouseMonthly()">불러오기</button>
+          <button onclick="saveHouseMonthly()">저장</button>
+          <span id="hm-form-msg" class="form-msg"></span>
+        </div>
+
+        <!-- 한강의원 -->
+        <div class="section-title" style="font-size:14px;font-weight:600;color:#1a1a18;border-bottom:1px solid #1a1a18;margin-top:0;justify-content:space-between;">
+          <span>🏥 한강의원</span>
+          <span class="last-saved" id="hm-han-lastsaved">최종저장: -</span>
+        </div>
+        <div class="section-title">
+          💰 매출 <span class="total-badge" id="hm-han-rev-total">합계: 0원</span>
+        </div>
+        <div id="hm-han-revenue-rows"></div>
+        <button class="add-btn" onclick="addHmRow('han','revenue')">+ 항목 추가</button>
+
+        <div class="section-title" style="margin-top:20px;">
+          💸 지출 <span class="total-badge" id="hm-han-exp-total">합계: 0원</span>
+        </div>
+        <div id="hm-han-expense-rows"></div>
+        <button class="add-btn" onclick="addHmRow('han','expense')">+ 항목 추가</button>
+
+        <!-- 사랑의원 -->
+        <div class="section-title" style="font-size:14px;font-weight:600;color:#1a1a18;border-bottom:1px solid #1a1a18;margin-top:32px;justify-content:space-between;">
+          <span>🏥 사랑의원</span>
+          <span class="last-saved" id="hm-sarang-lastsaved">최종저장: -</span>
+        </div>
+        <div class="section-title">
+          💰 매출 <span class="total-badge" id="hm-sarang-rev-total">합계: 0원</span>
+        </div>
+        <div id="hm-sarang-revenue-rows"></div>
+        <button class="add-btn" onclick="addHmRow('sarang','revenue')">+ 항목 추가</button>
+
+        <div class="section-title" style="margin-top:20px;">
+          💸 지출 <span class="total-badge" id="hm-sarang-exp-total">합계: 0원</span>
+        </div>
+        <div id="hm-sarang-expense-rows"></div>
+        <button class="add-btn" onclick="addHmRow('sarang','expense')">+ 항목 추가</button>
+
+        <!-- 실수입 결과 -->
+        <div class="net-summary">
+          <div class="ns-item">
+            <div class="ns-label">한강의원 실수입</div>
+            <div class="ns-value" id="hm-han-net">0원</div>
+          </div>
+          <div class="ns-item">
+            <div class="ns-label">사랑의원 실수입</div>
+            <div class="ns-value" id="hm-sarang-net">0원</div>
+          </div>
+          <div class="ns-item">
+            <div class="ns-label">총 실수입</div>
+            <div class="ns-value" id="hm-total-net">0원</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="recent-card">
+        <h2>최근 입력 데이터 <span style="font-size:12px;font-weight:400;color:#888780;">(monthly_house)</span></h2>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr>
+              <th>월</th><th class="num">한강 매출</th><th class="num">한강 지출</th><th class="num">한강 실수입</th>
+              <th class="num">사랑 매출</th><th class="num">사랑 지출</th><th class="num">사랑 실수입</th><th></th>
+            </tr></thead>
+            <tbody id="hm-recent-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div><!-- /gensub-house-monthly -->
+</div><!-- /page-gen -->
+
+<script>
+const SUPABASE_URL = 'https://algfzvbqxxvcaunlsrxd.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsZ2Z6dmJxeHh2Y2F1bmxzcnhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MDM5MDQsImV4cCI6MjA5NDQ3OTkwNH0.lD9pIFoSw2lYY23zDMFbfeGvI0p_kcih61rScSh5a3s';
+const HDR = { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
+const DOW = ['일','월','화','수','목','금','토'];
+
+/* ══ 공통 유틸 ══ */
+let _lc = 0;
+function loading(on){ _lc=Math.max(0,_lc+(on?1:-1)); document.getElementById('loading-overlay').classList[_lc>0?'add':'remove']('visible'); }
+function fmt(n){ n=Number(n); if(isNaN(n))return'-'; if(Math.abs(n)>=100000000)return(n/100000000).toFixed(1)+'억'; if(Math.abs(n)>=10000)return Math.round(n/10000)+'만'; return n.toLocaleString(); }
+function fmtW(v){ v=Number(v); if(isNaN(v))return'-'; if(Math.abs(v)>=100000000)return(v/100000000).toFixed(1)+'억'; if(Math.abs(v)>=10000)return Math.round(v/10000)+'만'; return v.toLocaleString(); }
+function numOrNull(id){ const v=document.getElementById(id)?.value.trim(); return(!v||v==='')?null:parseInt(v,10)||0; }
+function getN(id){ const v=document.getElementById(id)?.value; return(v===''||v==null)?0:parseInt(v)||0; }
+function setN(id,v){ const el=document.getElementById(id); if(el) el.value=(v!=null&&v!==''&&v!==0)?v:''; }
+function showMsg(id,msg,ok){ const el=document.getElementById(id); if(!el)return; el.textContent=msg; el.className='form-msg '+(ok?'ok':'err'); setTimeout(()=>el.textContent='',5000); }
+function setStatus(msg,type='success'){ const el=document.getElementById('status-bar'); el.className='status-bar '+type; el.textContent=msg; }
+function prevM(ym){ const[y,m]=ym.split('-').map(Number); return m===1?`${y-1}-12`:`${y}-${String(m-1).padStart(2,'0')}`; }
+function nextDay(d){ const dt=new Date(d); dt.setDate(dt.getDate()+1); return dt.toISOString().slice(0,10); }
+
+/* ══ 탭 전환 ══ */
+function showPage(name,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  el.classList.add('active');
+  if(name==='gen') setTimeout(loadGenRecent,50);
+}
+
+/* ══ 데이터 생성 ▸ 한강일일통계생성 (daily_han) ══ */
+function showGenSubpage(name,el){
+  document.querySelectorAll('.gensubpage').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('#page-gen .subtab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('gensub-'+name).classList.add('active');
+  el.classList.add('active');
+  if(name==='hangang-daily') loadGenRecent();
+  if(name==='house-monthly'){ if(!document.getElementById('hm-han-revenue-rows').children.length) initHouseMonthlyForm(); loadHmRecent(); }
+}
+document.getElementById('g-date').addEventListener('change',function(){
+  document.getElementById('g-dow').value=this.value?DOW[new Date(this.value).getDay()]:'';
+});
+(function(){
+  const t=new Date();
+  const yd=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+  const gd=document.getElementById('g-date');
+  if(gd){ gd.value=yd; document.getElementById('g-dow').value=DOW[t.getDay()]; }
+})();
+function clearHangangDailyForm(){
+  ['g-total','g-new','g-return','g-revenue','g-cash','g-card','g-claim','g-deposit'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
+}
+async function saveHangangDaily(){
+  const dateVal=document.getElementById('g-date').value;
+  if(!dateVal){showMsg('gen-form-msg','날짜를 입력하세요.',false);return;}
+  const dow=document.getElementById('g-dow').value;
+  const payload={date:dateVal,day_of_week:dow||null,
+    total_patients:numOrNull('g-total'),new_patients:numOrNull('g-new'),
+    return_patients:numOrNull('g-return'),daily_revenue:numOrNull('g-revenue'),
+    cash:numOrNull('g-cash'),card:numOrNull('g-card'),
+    insurance_claim:numOrNull('g-claim'),deposit:numOrNull('g-deposit')};
+  if(dow==='일') ['total_patients','new_patients','return_patients','daily_revenue','cash','card','insurance_claim','deposit'].forEach(k=>payload[k]=null);
+  loading(true);
+  try{
+    const res=await fetch(`${SUPABASE_URL}/rest/v1/daily_han`,{method:'POST',headers:{...HDR,'Prefer':'resolution=merge-duplicates'},body:JSON.stringify(payload)});
+    if(!res.ok){const e=await res.json();throw new Error(e.message||`HTTP ${res.status}`);}
+    showMsg('gen-form-msg','✓ 저장 완료!',true); setStatus(`✓ ${dateVal} daily_han 저장됨`,'success'); loadGenRecent();
+  }catch(e){showMsg('gen-form-msg','오류: '+e.message,false);}
+  finally{loading(false);}
+}
+async function loadGenRecent(){
+  try{
+    const res=await fetch(`${SUPABASE_URL}/rest/v1/daily_han?select=*&order=date.desc&limit=20`,{headers:HDR});
+    const data=await res.json();
+    const tbody=document.getElementById('gen-recent-tbody');
+    if(!Array.isArray(data)||!data.length){tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>';return;}
+    tbody.innerHTML=data.map(r=>`<tr>
+      <td>${r.date||''}</td><td>${r.day_of_week==='일'?'<span class="badge badge-sun">일</span>':(r.day_of_week||'')}</td>
+      <td class="num">${r.total_patients??'-'}</td><td class="num">${r.new_patients??'-'}</td><td class="num">${r.return_patients??'-'}</td>
+      <td class="num">${r.daily_revenue!=null?r.daily_revenue.toLocaleString():'-'}</td>
+      <td class="num">${r.cash!=null?r.cash.toLocaleString():'-'}</td><td class="num">${r.card!=null?r.card.toLocaleString():'-'}</td>
+      <td class="num">${r.insurance_claim!=null?r.insurance_claim.toLocaleString():'-'}</td>
+      <td class="num">${r.deposit!=null?r.deposit.toLocaleString():'-'}</td>
+      <td><button class="danger" style="padding:3px 10px;font-size:12px;" onclick="deleteHangangDaily('${r.date}')">삭제</button></td>
+    </tr>`).join('');
+  }catch(e){showMsg('gen-form-msg','⚠ '+e.message,false);}
+}
+async function deleteHangangDaily(date){ if(!confirm(`${date} 삭제?`))return; try{ await fetch(`${SUPABASE_URL}/rest/v1/daily_han?date=eq.${date}`,{method:'DELETE',headers:HDR}); loadGenRecent(); }catch(e){} }
+
+/* ══ 데이터 생성 ▸ 병원한달통계생성 (monthly_house) ══ */
+let hmRowSeq=0;
+function hmRowId(){ return 'hmrow'+(++hmRowSeq); }
+
+function addHmRow(clinic,kind,name='',amount='',note='',rowId=null){
+  rowId = rowId || hmRowId();
+  const container=document.getElementById(`hm-${clinic}-${kind}-rows`);
+  const wrap=document.createElement('div');
+  wrap.className='ie-row';
+  wrap.id=rowId;
+  wrap.style.gridTemplateColumns='1fr 140px 160px 28px';
+  const amountDisplay = (amount!==''&&amount!=null&&amount!==0) ? formatHmNumber(amount) : (amount===0? '0':'');
+  wrap.innerHTML=`
+    <input type="text" class="hm-name" placeholder="항목명" value="${escapeHtml(name)}">
+    <input type="text" inputmode="numeric" class="hm-amount" placeholder="0" value="${amountDisplay}" oninput="onHmAmountInput(this)">
+    <input type="text" class="note-input hm-note" placeholder="비고" value="${escapeHtml(note)}">
+    <button class="del-btn" onclick="document.getElementById('${rowId}').remove(); calcHmTotals();">✕</button>`;
+  container.appendChild(wrap);
+  calcHmTotals();
+}
+
+function formatHmNumber(val){
+  const n = typeof val==='number' ? val : parseInt(String(val).replace(/[^\d\-]/g,''),10);
+  if(!n || isNaN(n)) return n===0 ? '0' : '';
+  return n.toLocaleString();
+}
+
+function onHmAmountInput(input){
+  const prevLen = input.value.length;
+  const prevPos = input.selectionStart;
+  const digitsBeforeCursor = input.value.slice(0,prevPos).replace(/[^\d]/g,'').length;
+
+  const raw = input.value.replace(/[^\d]/g,'');
+  const formatted = raw ? parseInt(raw,10).toLocaleString() : '';
+  input.value = formatted;
+
+  // 커서 위치를 같은 숫자 개수 지점으로 복원
+  let count=0, pos=formatted.length;
+  for(let i=0;i<formatted.length;i++){
+    if(/\d/.test(formatted[i])) count++;
+    if(count===digitsBeforeCursor){ pos=i+1; break; }
+  }
+  if(digitsBeforeCursor===0) pos=0;
+  input.setSelectionRange(pos,pos);
+
+  calcHmTotals();
+}
+
+function escapeHtml(s){ return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function getHmRows(clinic,kind){
+  const container=document.getElementById(`hm-${clinic}-${kind}-rows`);
+  const rows=[];
+  container.querySelectorAll('.ie-row').forEach(r=>{
+    const name=r.querySelector('.hm-name').value.trim();
+    const amount=parseInt(r.querySelector('.hm-amount').value.replace(/[^\d]/g,''),10)||0;
+    const note=r.querySelector('.hm-note').value.trim();
+    if(name||amount) rows.push({name,amount,note});
+  });
+  return rows;
+}
+
+function sumHmRows(clinic,kind){
+  return getHmRows(clinic,kind).reduce((s,r)=>s+r.amount,0);
+}
+
+function calcHmTotals(){
+  const hanRev=sumHmRows('han','revenue'), hanExp=sumHmRows('han','expense');
+  const sarRev=sumHmRows('sarang','revenue'), sarExp=sumHmRows('sarang','expense');
+  const hanNet=hanRev-hanExp, sarNet=sarRev-sarExp, total=hanNet+sarNet;
+
+  document.getElementById('hm-han-rev-total').textContent='합계: '+hanRev.toLocaleString()+'원';
+  document.getElementById('hm-han-exp-total').textContent='합계: '+hanExp.toLocaleString()+'원';
+  document.getElementById('hm-sarang-rev-total').textContent='합계: '+sarRev.toLocaleString()+'원';
+  document.getElementById('hm-sarang-exp-total').textContent='합계: '+sarExp.toLocaleString()+'원';
+
+  const hanNetEl=document.getElementById('hm-han-net');
+  hanNetEl.textContent=hanNet.toLocaleString()+'원'; hanNetEl.className='ns-value '+(hanNet>=0?'positive':'negative');
+  const sarNetEl=document.getElementById('hm-sarang-net');
+  sarNetEl.textContent=sarNet.toLocaleString()+'원'; sarNetEl.className='ns-value '+(sarNet>=0?'positive':'negative');
+  const totalEl=document.getElementById('hm-total-net');
+  totalEl.textContent=total.toLocaleString()+'원'; totalEl.className='ns-value '+(total>=0?'positive':'negative');
+
+  return {hanRev,hanExp,sarRev,sarExp,hanNet,sarNet,total};
+}
+
+function clearHmRows(){
+  ['han-revenue','han-expense','sarang-revenue','sarang-expense'].forEach(key=>{
+    document.getElementById(`hm-${key}-rows`).innerHTML='';
+  });
+}
+
+function initHouseMonthlyForm(){
+  const t=new Date();
+  const ym=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}`;
+  const el=document.getElementById('hm-month');
+  if(el && !el.value) el.value=ym;
+  clearHmRows();
+  document.getElementById('hm-han-lastsaved').textContent='최종저장: -';
+  document.getElementById('hm-sarang-lastsaved').textContent='최종저장: -';
+  // 한강의원 기본 항목
+  addHmRow('han','revenue','현금입금'); addHmRow('han','revenue','카드입금'); addHmRow('han','revenue','공단입금');
+  addHmRow('han','expense','상가월세'); addHmRow('han','expense','직원월급'); addHmRow('han','expense','퇴직금'); addHmRow('han','expense','예비비');
+  // 사랑의원 기본 항목
+  addHmRow('sarang','revenue','현금입금'); addHmRow('sarang','revenue','카드입금'); addHmRow('sarang','revenue','공단입금');
+  addHmRow('sarang','expense','상가월세'); addHmRow('sarang','expense','직원월급'); addHmRow('sarang','expense','퇴직금'); addHmRow('sarang','expense','예비비');
+  calcHmTotals();
+}
+
+function nowStampKR(){
+  const d=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function buildItemsText(revRows,expRows,savedAt){
+  const lines=[];
+  if(savedAt) lines.push(`[저장일] ${savedAt}`);
+  if(revRows.length){ lines.push('[매출]'); revRows.forEach(r=>lines.push(`${r.name}: ${r.amount.toLocaleString()}원${r.note?' ('+r.note+')':''}`)); }
+  if(expRows.length){ lines.push('[지출]'); expRows.forEach(r=>lines.push(`${r.name}: ${r.amount.toLocaleString()}원${r.note?' ('+r.note+')':''}`)); }
+  return lines.join('\n');
+}
+
+function parseSavedAt(text){
+  if(!text) return null;
+  const m=text.match(/^\[저장일\]\s*(.+)$/m);
+  return m ? m[1].trim() : null;
+}
+
+async function saveHouseMonthly(){
+  const month=document.getElementById('hm-month').value;
+  if(!month){ showMsg('hm-form-msg','입력 월을 선택하세요.',false); return; }
+
+  const hanRevRows=getHmRows('han','revenue'), hanExpRows=getHmRows('han','expense');
+  const sarRevRows=getHmRows('sarang','revenue'), sarExpRows=getHmRows('sarang','expense');
+  const {hanRev,hanExp,sarRev,sarExp,hanNet,sarNet}=calcHmTotals();
+  const savedAt=nowStampKR();
+
+  const payload={
+    year_month:month,
+    han_revenue:hanRev, han_expense:hanExp, h_items:buildItemsText(hanRevRows,hanExpRows,savedAt), han_net:hanNet,
+    sarang_revenue:sarRev, sarang_expense:sarExp, s_items:buildItemsText(sarRevRows,sarExpRows,savedAt), sarang_net:sarNet
+  };
+
+  loading(true);
+  try{
+    const res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house`,{method:'POST',headers:{...HDR,'Prefer':'resolution=merge-duplicates'},body:JSON.stringify(payload)});
+    if(!res.ok){ const e=await res.json(); throw new Error(e.message||`HTTP ${res.status}`); }
+    document.getElementById('hm-han-lastsaved').textContent='최종저장: '+savedAt;
+    document.getElementById('hm-sarang-lastsaved').textContent='최종저장: '+savedAt;
+    showMsg('hm-form-msg','✓ 저장 완료!',true);
+    setStatus(`✓ ${month} monthly_house 저장됨`,'success');
+    loadHmRecent();
+  }catch(e){ showMsg('hm-form-msg','오류: '+e.message,false); }
+  finally{ loading(false); }
+}
+
+function parseItemsText(text,kind){
+  // kind: 'revenue' or 'expense' — returns [{name,amount,note}]
+  if(!text) return [];
+  const marker = kind==='revenue' ? '[매출]' : '[지출]';
+  const otherMarker = kind==='revenue' ? '[지출]' : '[매출]';
+  const lines=text.split('\n');
+  const startIdx=lines.findIndex(l=>l.trim()===marker);
+  if(startIdx===-1) return [];
+  const rows=[];
+  for(let i=startIdx+1;i<lines.length;i++){
+    const line=lines[i];
+    if(line.trim()===otherMarker) break;
+    const m=line.match(/^(.+?):\s*([\-\d,]+)원(?:\s*\((.*)\))?$/);
+    if(m){ rows.push({name:m[1].trim(), amount:parseInt(m[2].replace(/,/g,''),10)||0, note:m[3]||''}); }
+  }
+  return rows;
+}
+
+async function loadHouseMonthly(){
+  const month=document.getElementById('hm-month').value;
+  if(!month){ showMsg('hm-form-msg','입력 월을 선택하세요.',false); return; }
+  loading(true);
+  try{
+    const res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=*&year_month=eq.${month}`,{headers:HDR});
+    const data=await res.json();
+    clearHmRows();
+    if(Array.isArray(data) && data.length){
+      const r=data[0];
+      const hanRevRows=parseItemsText(r.h_items,'revenue');
+      const hanExpRows=parseItemsText(r.h_items,'expense');
+      const sarRevRows=parseItemsText(r.s_items,'revenue');
+      const sarExpRows=parseItemsText(r.s_items,'expense');
+      const hanSavedAt=parseSavedAt(r.h_items);
+      const sarSavedAt=parseSavedAt(r.s_items);
+      document.getElementById('hm-han-lastsaved').textContent='최종저장: '+(hanSavedAt||'-');
+      document.getElementById('hm-sarang-lastsaved').textContent='최종저장: '+(sarSavedAt||'-');
+      if(hanRevRows.length) hanRevRows.forEach(row=>addHmRow('han','revenue',row.name,row.amount,row.note));
+      else { addHmRow('han','revenue','현금입금'); addHmRow('han','revenue','카드입금'); addHmRow('han','revenue','공단입금'); }
+      if(hanExpRows.length) hanExpRows.forEach(row=>addHmRow('han','expense',row.name,row.amount,row.note));
+      else { addHmRow('han','expense','상가월세'); addHmRow('han','expense','직원월급'); }
+      if(sarRevRows.length) sarRevRows.forEach(row=>addHmRow('sarang','revenue',row.name,row.amount,row.note));
+      else { addHmRow('sarang','revenue','현금입금'); addHmRow('sarang','revenue','카드입금'); addHmRow('sarang','revenue','공단입금'); }
+      if(sarExpRows.length) sarExpRows.forEach(row=>addHmRow('sarang','expense',row.name,row.amount,row.note));
+      else { addHmRow('sarang','expense','상가월세'); addHmRow('sarang','expense','직원월급'); }
+      showMsg('hm-form-msg','✓ 불러오기 완료',true);
+    }else{
+      initHouseMonthlyForm();
+      showMsg('hm-form-msg','해당 월 데이터 없음 (새로 입력)',true);
+    }
+    calcHmTotals();
+  }catch(e){ showMsg('hm-form-msg','오류: '+e.message,false); }
+  finally{ loading(false); }
+}
+
+async function loadHmRecent(){
+  try{
+    const res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=*&order=year_month.desc&limit=12`,{headers:HDR});
+    const data=await res.json();
+    const tbody=document.getElementById('hm-recent-tbody');
+    if(!Array.isArray(data)||!data.length){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>'; return; }
+    tbody.innerHTML=data.map(r=>`<tr>
+      <td>${r.year_month||''}</td>
+      <td class="num">${r.han_revenue!=null?r.han_revenue.toLocaleString():'-'}</td>
+      <td class="num">${r.han_expense!=null?r.han_expense.toLocaleString():'-'}</td>
+      <td class="num">${r.han_net!=null?r.han_net.toLocaleString():'-'}</td>
+      <td class="num">${r.sarang_revenue!=null?r.sarang_revenue.toLocaleString():'-'}</td>
+      <td class="num">${r.sarang_expense!=null?r.sarang_expense.toLocaleString():'-'}</td>
+      <td class="num">${r.sarang_net!=null?r.sarang_net.toLocaleString():'-'}</td>
+      <td><button class="danger" style="padding:3px 10px;font-size:12px;" onclick="deleteHouseMonthly('${r.year_month}')">삭제</button></td>
+    </tr>`).join('');
+  }catch(e){ showMsg('hm-form-msg','⚠ '+e.message,false); }
+}
+
+async function deleteHouseMonthly(month){
+  if(!confirm(`${month} 삭제?`))return;
+  try{ await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?year_month=eq.${month}`,{method:'DELETE',headers:HDR}); loadHmRecent(); }catch(e){}
+}
+
+/* 초기 로드 */
+loadGenRecent();
+</script>
+
+</body>
+</html>
