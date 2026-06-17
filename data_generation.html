@@ -223,14 +223,19 @@ tr:hover td { background: #f5f5f0; }
           <label>입력 월:</label>
           <input type="month" id="hm-month" style="width:auto;">
           <button class="secondary" onclick="loadHouseMonthly()">불러오기</button>
-          <button onclick="saveHouseMonthly()">저장</button>
           <span id="hm-form-msg" class="form-msg"></span>
         </div>
 
         <!-- 한강의원 -->
-        <div class="section-title" style="font-size:14px;font-weight:600;color:#1a1a18;border-bottom:1px solid #1a1a18;margin-top:0;justify-content:space-between;">
+        <div class="section-title" style="font-size:14px;font-weight:600;color:#1a1a18;border-bottom:1px solid #1a1a18;margin-top:0;justify-content:space-between;align-items:center;">
           <span>🏥 한강의원</span>
-          <span class="last-saved" id="hm-han-lastsaved">최종저장: -</span>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span class="last-saved" id="hm-han-lastsaved">최종저장: -</span>
+            <label style="font-size:12px;color:#888780;font-weight:400;">저장일:</label>
+            <input type="date" id="hm-han-savedate" style="width:140px;font-size:12px;padding:4px 8px;">
+            <button style="padding:5px 14px;font-size:13px;" onclick="saveHanClinic()">한강 저장</button>
+            <span id="hm-han-form-msg" class="form-msg"></span>
+          </div>
         </div>
         <div class="section-title">
           💰 매출 <span class="total-badge" id="hm-han-rev-total">합계: 0원</span>
@@ -245,9 +250,15 @@ tr:hover td { background: #f5f5f0; }
         <button class="add-btn" onclick="addHmRow('han','expense')">+ 항목 추가</button>
 
         <!-- 사랑의원 -->
-        <div class="section-title" style="font-size:14px;font-weight:600;color:#1a1a18;border-bottom:1px solid #1a1a18;margin-top:32px;justify-content:space-between;">
+        <div class="section-title" style="font-size:14px;font-weight:600;color:#1a1a18;border-bottom:1px solid #1a1a18;margin-top:32px;justify-content:space-between;align-items:center;">
           <span>🏥 사랑의원</span>
-          <span class="last-saved" id="hm-sarang-lastsaved">최종저장: -</span>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span class="last-saved" id="hm-sarang-lastsaved">최종저장: -</span>
+            <label style="font-size:12px;color:#888780;font-weight:400;">저장일:</label>
+            <input type="date" id="hm-sarang-savedate" style="width:140px;font-size:12px;padding:4px 8px;">
+            <button style="padding:5px 14px;font-size:13px;" onclick="saveSarangClinic()">사랑 저장</button>
+            <span id="hm-sarang-form-msg" class="form-msg"></span>
+          </div>
         </div>
         <div class="section-title">
           💰 매출 <span class="total-badge" id="hm-sarang-rev-total">합계: 0원</span>
@@ -478,6 +489,9 @@ function initHouseMonthlyForm(){
   const el=document.getElementById('hm-month');
   if(el && !el.value) el.value=ym;
   clearHmRows();
+  const today=todayDateStr();
+  const hanSd=document.getElementById('hm-han-savedate'); if(hanSd&&!hanSd.value) hanSd.value=today;
+  const sarSd=document.getElementById('hm-sarang-savedate'); if(sarSd&&!sarSd.value) sarSd.value=today;
   document.getElementById('hm-han-lastsaved').textContent='최종저장: -';
   document.getElementById('hm-sarang-lastsaved').textContent='최종저장: -';
   // 한강의원 기본 항목
@@ -489,10 +503,10 @@ function initHouseMonthlyForm(){
   calcHmTotals();
 }
 
-function nowStampKR(){
+function todayDateStr(){
   const d=new Date();
   const pad=n=>String(n).padStart(2,'0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
 function buildItemsText(revRows,expRows,savedAt){
@@ -509,32 +523,86 @@ function parseSavedAt(text){
   return m ? m[1].trim() : null;
 }
 
-async function saveHouseMonthly(){
+/* 한강의원 단독 저장 */
+async function saveHanClinic(){
   const month=document.getElementById('hm-month').value;
-  if(!month){ showMsg('hm-form-msg','입력 월을 선택하세요.',false); return; }
+  if(!month){ showMsg('hm-han-form-msg','입력 월을 선택하세요.',false); return; }
+  const saveDateEl=document.getElementById('hm-han-savedate');
+  const savedAt=saveDateEl.value || todayDateStr();
 
   const hanRevRows=getHmRows('han','revenue'), hanExpRows=getHmRows('han','expense');
-  const sarRevRows=getHmRows('sarang','revenue'), sarExpRows=getHmRows('sarang','expense');
-  const {hanRev,hanExp,sarRev,sarExp,hanNet,sarNet}=calcHmTotals();
-  const savedAt=nowStampKR();
+  const {hanRev,hanExp,hanNet}=calcHmTotals();
 
-  const payload={
-    year_month:month,
-    han_revenue:hanRev, han_expense:hanExp, h_items:buildItemsText(hanRevRows,hanExpRows,savedAt), han_net:hanNet,
-    sarang_revenue:sarRev, sarang_expense:sarExp, s_items:buildItemsText(sarRevRows,sarExpRows,savedAt), sarang_net:sarNet
-  };
-
+  /* 기존 레코드에서 사랑의원 데이터 먼저 조회해 유지 */
   loading(true);
   try{
+    const existing=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=*&year_month=eq.${month}`,{headers:HDR});
+    const existData=await existing.json();
+    const prev=Array.isArray(existData)&&existData.length ? existData[0] : {};
+
+    const payload={
+      year_month:month,
+      han_revenue:hanRev, han_expense:hanExp,
+      h_items:buildItemsText(hanRevRows,hanExpRows,savedAt),
+      han_net:hanNet,
+      sarang_revenue:prev.sarang_revenue??null,
+      sarang_expense:prev.sarang_expense??null,
+      s_items:prev.s_items??null,
+      sarang_net:prev.sarang_net??null
+    };
     const res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house`,{method:'POST',headers:{...HDR,'Prefer':'resolution=merge-duplicates'},body:JSON.stringify(payload)});
     if(!res.ok){ const e=await res.json(); throw new Error(e.message||`HTTP ${res.status}`); }
     document.getElementById('hm-han-lastsaved').textContent='최종저장: '+savedAt;
-    document.getElementById('hm-sarang-lastsaved').textContent='최종저장: '+savedAt;
-    showMsg('hm-form-msg','✓ 저장 완료!',true);
-    setStatus(`✓ ${month} monthly_house 저장됨`,'success');
+    showMsg('hm-han-form-msg','✓ 한강 저장 완료!',true);
+    setStatus(`✓ ${month} 한강의원 저장됨`,'success');
     loadHmRecent();
-  }catch(e){ showMsg('hm-form-msg','오류: '+e.message,false); }
+  }catch(e){ showMsg('hm-han-form-msg','오류: '+e.message,false); }
   finally{ loading(false); }
+}
+
+/* 사랑의원 단독 저장 */
+async function saveSarangClinic(){
+  const month=document.getElementById('hm-month').value;
+  if(!month){ showMsg('hm-sarang-form-msg','입력 월을 선택하세요.',false); return; }
+  const saveDateEl=document.getElementById('hm-sarang-savedate');
+  const savedAt=saveDateEl.value || todayDateStr();
+
+  const sarRevRows=getHmRows('sarang','revenue'), sarExpRows=getHmRows('sarang','expense');
+  const {sarRev,sarExp,sarNet}=calcHmTotals();
+
+  /* 기존 레코드에서 한강의원 데이터 먼저 조회해 유지 */
+  loading(true);
+  try{
+    const existing=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=*&year_month=eq.${month}`,{headers:HDR});
+    const existData=await existing.json();
+    const prev=Array.isArray(existData)&&existData.length ? existData[0] : {};
+
+    const payload={
+      year_month:month,
+      han_revenue:prev.han_revenue??null,
+      han_expense:prev.han_expense??null,
+      h_items:prev.h_items??null,
+      han_net:prev.han_net??null,
+      sarang_revenue:sarRev, sarang_expense:sarExp,
+      s_items:buildItemsText(sarRevRows,sarExpRows,savedAt),
+      sarang_net:sarNet
+    };
+    const res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house`,{method:'POST',headers:{...HDR,'Prefer':'resolution=merge-duplicates'},body:JSON.stringify(payload)});
+    if(!res.ok){ const e=await res.json(); throw new Error(e.message||`HTTP ${res.status}`); }
+    document.getElementById('hm-sarang-lastsaved').textContent='최종저장: '+savedAt;
+    showMsg('hm-sarang-form-msg','✓ 사랑 저장 완료!',true);
+    setStatus(`✓ ${month} 사랑의원 저장됨`,'success');
+    loadHmRecent();
+  }catch(e){ showMsg('hm-sarang-form-msg','오류: '+e.message,false); }
+  finally{ loading(false); }
+}
+
+/* 구 통합 저장 (하위호환 유지, 미사용) */
+async function saveHouseMonthly(){
+  const month=document.getElementById('hm-month').value;
+  if(!month){ showMsg('hm-form-msg','입력 월을 선택하세요.',false); return; }
+  await saveHanClinic();
+  await saveSarangClinic();
 }
 
 function parseItemsText(text,kind){
@@ -573,6 +641,11 @@ async function loadHouseMonthly(){
       const sarSavedAt=parseSavedAt(r.s_items);
       document.getElementById('hm-han-lastsaved').textContent='최종저장: '+(hanSavedAt||'-');
       document.getElementById('hm-sarang-lastsaved').textContent='최종저장: '+(sarSavedAt||'-');
+      // 저장일 input에도 기존 저장일 채우기 (YYYY-MM-DD 형식만 date input에 호환)
+      const hanSd=document.getElementById('hm-han-savedate');
+      if(hanSd && hanSavedAt && /^\d{4}-\d{2}-\d{2}$/.test(hanSavedAt)) hanSd.value=hanSavedAt;
+      const sarSd=document.getElementById('hm-sarang-savedate');
+      if(sarSd && sarSavedAt && /^\d{4}-\d{2}-\d{2}$/.test(sarSavedAt)) sarSd.value=sarSavedAt;
       if(hanRevRows.length) hanRevRows.forEach(row=>addHmRow('han','revenue',row.name,row.amount,row.note));
       else { addHmRow('han','revenue','현금입금'); addHmRow('han','revenue','카드입금'); addHmRow('han','revenue','공단입금'); }
       if(hanExpRows.length) hanExpRows.forEach(row=>addHmRow('han','expense',row.name,row.amount,row.note));
