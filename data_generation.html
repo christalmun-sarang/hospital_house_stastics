@@ -594,8 +594,11 @@ async function saveHmSection(clinic,kind){
     };
 
     let res;
-    if(prev){
+    if(prev && prev.id!=null){
       res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?id=eq.${prev.id}`,{method:'PATCH',headers:HDR,body:JSON.stringify(fields)});
+    }else if(prev){
+      // id 값이 없는(NULL) 기존 행 — year_month 기준으로 대신 갱신
+      res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?year_month=eq.${month}`,{method:'PATCH',headers:HDR,body:JSON.stringify(fields)});
     }else{
       res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house`,{method:'POST',headers:HDR,body:JSON.stringify({year_month:month,...fields})});
     }
@@ -690,7 +693,9 @@ async function loadHmRecent(){
     const data=await res.json();
     const tbody=document.getElementById('hm-recent-tbody');
     if(!Array.isArray(data)||!data.length){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>'; return; }
-    tbody.innerHTML=data.map(r=>`<tr>
+    tbody.innerHTML=data.map(r=>{
+      const idArg = r.id!=null ? `'${r.id}'` : 'null';
+      return `<tr>
       <td>${r.year_month||''}</td>
       <td class="num">${r.han_revenue!=null?r.han_revenue.toLocaleString():'-'}</td>
       <td class="num">${r.han_expense!=null?r.han_expense.toLocaleString():'-'}</td>
@@ -699,16 +704,22 @@ async function loadHmRecent(){
       <td class="num">${r.sarang_expense!=null?r.sarang_expense.toLocaleString():'-'}</td>
       <td class="num">${r.sarang_net!=null?r.sarang_net.toLocaleString():'-'}</td>
       <td style="white-space:nowrap;">
-        <button class="secondary" style="padding:3px 10px;font-size:12px;margin-right:4px;" onclick="editHouseMonthly('${r.id}','${r.year_month}')">편집</button>
-        <button class="danger" style="padding:3px 10px;font-size:12px;" onclick="deleteHouseMonthly('${r.id}','${r.year_month}')">삭제</button>
+        <button class="secondary" style="padding:3px 10px;font-size:12px;margin-right:4px;" onclick="editHouseMonthly(${idArg},'${r.year_month}')">편집</button>
+        <button class="danger" style="padding:3px 10px;font-size:12px;" onclick="deleteHouseMonthly(${idArg},'${r.year_month}')">삭제</button>
       </td>
-    </tr>`).join('');
+    </tr>`;
+    }).join('');
   }catch(e){ showMsg('hm-form-msg','⚠ '+e.message,false); }
 }
 
 async function deleteHouseMonthly(id,month){
-  if(!confirm(`${month} 데이터(#${id}) 삭제?`))return;
-  try{ await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?id=eq.${id}`,{method:'DELETE',headers:HDR}); loadHmRecent(); }catch(e){}
+  const label = id!=null ? `${month} 데이터(#${id})` : `${month} 전체 데이터`;
+  if(!confirm(`${label} 삭제?`))return;
+  try{
+    const q = id!=null ? `id=eq.${id}` : `year_month=eq.${month}`;
+    await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?${q}`,{method:'DELETE',headers:HDR});
+    loadHmRecent();
+  }catch(e){}
 }
 
 /* 초기 로드 */
