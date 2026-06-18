@@ -893,6 +893,7 @@ async function loadAssetMonthly(filterId){
     const data=await res.json();
     clearAssetRows();
     if(Array.isArray(data) && data.length){
+      /* 이번 달 데이터 존재 → 그대로 불러오기 */
       const r=data[0];
       ASSET_CATS.forEach(c=>{
         const rows=parseAssetItemsText(r[c.detailCol]);
@@ -901,8 +902,22 @@ async function loadAssetMonthly(filterId){
       });
       showMsg('am-form-msg','✓ 불러오기 완료',true);
     }else{
-      initAssetMonthlyForm();
-      showMsg('am-form-msg','해당 월 데이터 없음 (새로 입력)',true);
+      /* 이번 달 없음 → 이전 달 자료 가져와서 항목명/비고 유지, 금액·날짜 초기화 */
+      const prevMonth=prevM(month);
+      const prevRes=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=*&year_month=eq.${prevMonth}&order=id.asc`,{headers:HDR});
+      const prevData=await prevRes.json();
+      if(Array.isArray(prevData) && prevData.length){
+        const pr=prevData[0];
+        ASSET_CATS.forEach(c=>{
+          const rows=parseAssetItemsText(pr[c.detailCol]);
+          if(rows.length) rows.forEach(row=>addAssetRow(c.key,row.name,0,'',row.note));
+          else { addAssetRow(c.key,`${c.label}(h)`); addAssetRow(c.key,`${c.label}(s)`); }
+        });
+        showMsg('am-form-msg',`✓ ${prevMonth} 항목 불러옴 — 금액을 입력 후 저장하세요`,true);
+      }else{
+        initAssetMonthlyForm();
+        showMsg('am-form-msg','데이터 없음 (새로 입력)',true);
+      }
     }
     calcAllAssetTotals();
   }catch(e){ showMsg('am-form-msg','오류: '+e.message,false); }
