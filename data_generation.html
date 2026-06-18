@@ -86,6 +86,9 @@ button.add-btn:hover { background: #e6f1fb; }
 .ie-row .del-btn { background: none; border: none; color: #ccc; font-size: 16px; cursor: pointer; padding: 0; }
 .ie-row .del-btn:hover { color: #a32d2d; }
 
+.am-row { display: grid; grid-template-columns: 1fr 130px 145px 1fr 28px; gap: 6px; align-items: center; margin-bottom: 7px; }
+.am-row .am-amount { text-align: right; font-variant-numeric: tabular-nums; }
+
 .net-summary { background: #f1efe8; border-radius: 10px; padding: 14px 20px; margin-top: 16px; display: flex; gap: 32px; flex-wrap: wrap; align-items: center; }
 .net-summary .ns-item { text-align: center; }
 .net-summary .ns-label { font-size: 12px; color: #888780; margin-bottom: 4px; }
@@ -174,6 +177,7 @@ tr:hover td { background: #f5f5f0; }
   <div class="subtabs">
     <button class="subtab active" onclick="showGenSubpage('hangang-daily',this)">한강일일통계생성</button>
     <button class="subtab" onclick="showGenSubpage('house-monthly',this)">병원한달통계생성</button>
+    <button class="subtab" onclick="showGenSubpage('household-monthly',this)">가계한달통계생성</button>
   </div>
 
   <!-- 서브: 한강일일통계생성 (daily_han) -->
@@ -317,6 +321,37 @@ tr:hover td { background: #f5f5f0; }
       </div>
     </div>
   </div><!-- /gensub-house-monthly -->
+
+  <!-- 서브: 가계한달통계생성 (monthly_house 자산 컬럼) -->
+  <div id="gensub-household-monthly" class="gensubpage">
+    <div class="main">
+      <div class="ie-form-card">
+        <h2>가계 월별 자산 현황</h2>
+        <div class="month-row">
+          <label>입력 월:</label>
+          <input type="month" id="am-month" style="width:auto;">
+          <button class="secondary" onclick="loadAssetMonthly()">불러오기</button>
+          <span id="am-form-msg" class="form-msg"></span>
+        </div>
+
+        <div id="am-categories"></div>
+      </div>
+
+      <div class="recent-card">
+        <h2>최근 입력 데이터 <span style="font-size:12px;font-weight:400;color:#888780;">(monthly_house · 자산)</span></h2>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr>
+              <th>월</th><th class="num">통장</th><th class="num">주식</th><th class="num">적금</th>
+              <th class="num">정기예금</th><th class="num">노란우산</th><th class="num">보증금</th>
+              <th class="num">퇴직연금</th><th class="num">연금보험</th><th></th>
+            </tr></thead>
+            <tbody id="am-recent-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div><!-- /gensub-household-monthly -->
 </div><!-- /page-gen -->
 
 <script>
@@ -355,6 +390,11 @@ function showGenSubpage(name,el){
   el.classList.add('active');
   if(name==='hangang-daily') loadGenRecent();
   if(name==='house-monthly'){ if(!document.getElementById('hm-han-revenue-rows').children.length) initHouseMonthlyForm(); loadHmRecent(); }
+  if(name==='household-monthly'){
+    renderAssetCategories();
+    if(!document.getElementById('am-bank-rows').children.length) initAssetMonthlyForm();
+    loadAmRecent();
+  }
 }
 document.getElementById('g-date').addEventListener('change',function(){
   document.getElementById('g-dow').value=this.value?DOW[new Date(this.value).getDay()]:'';
@@ -719,7 +759,214 @@ async function deleteHouseMonthly(id,month){
     const q = id!=null ? `id=eq.${id}` : `year_month=eq.${month}`;
     await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?${q}`,{method:'DELETE',headers:HDR});
     loadHmRecent();
+    loadAmRecent();
   }catch(e){}
+}
+
+/* ══ 데이터 생성 ▸ 가계한달통계생성 (monthly_house 자산 컬럼) ══ */
+const ASSET_CATS = [
+  {key:'bank',       label:'통장',     totalCol:'bank_total',       detailCol:'bank_m',       circled:'①'},
+  {key:'stock',      label:'주식',     totalCol:'stock_total',      detailCol:'stock_m',      circled:'②'},
+  {key:'savings',    label:'적금',     totalCol:'savings_total',    detailCol:'saving_m',     circled:'③'},
+  {key:'deposit',    label:'정기예금', totalCol:'deposit_total',    detailCol:'deposit_m',    circled:'④'},
+  {key:'yellow',     label:'노란우산', totalCol:'yellow_total',     detailCol:'yellow_m',     circled:'⑤'},
+  {key:'guarantee',  label:'보증금',   totalCol:'guarantee_total',  detailCol:'quarantee_m',  circled:'⑥'},
+  {key:'retirement', label:'퇴직연금', totalCol:'retirement_total', detailCol:'retirement_m', circled:'⑦'},
+  {key:'annuity',    label:'연금보험', totalCol:'annuity_total',    detailCol:'annuity_m',    circled:'⑧'}
+];
+
+let amRowSeq=0;
+function amRowId(){ return 'amrow'+(++amRowSeq); }
+
+function renderAssetCategories(){
+  const container=document.getElementById('am-categories');
+  if(!container || container.dataset.rendered) return;
+  container.innerHTML = ASSET_CATS.map(c=>`
+    <div class="section-title">
+      <span>${c.circled} ${c.label}합</span>
+      <span class="total-val" id="am-${c.key}-total">0</span>
+    </div>
+    <div id="am-${c.key}-rows"></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:6px;margin-bottom:8px;flex-wrap:wrap;">
+      <button class="add-btn" onclick="addAssetRow('${c.key}')">+ 항목 추가</button>
+      <button style="padding:5px 14px;font-size:13px;" onclick="saveAssetCategory('${c.key}')">${c.label}관리</button>
+      <span id="am-${c.key}-msg" class="form-msg"></span>
+    </div>`).join('');
+  container.dataset.rendered='1';
+}
+
+function addAssetRow(catKey,name='',amount='',date='',note='',rowId=null){
+  rowId = rowId || amRowId();
+  const container=document.getElementById(`am-${catKey}-rows`);
+  const wrap=document.createElement('div');
+  wrap.className='am-row';
+  wrap.id=rowId;
+  const amountDisplay = (amount!==''&&amount!=null&&amount!==0) ? formatHmNumber(amount) : (amount===0 ? '0' : '');
+  wrap.innerHTML=`
+    <input type="text" class="am-name" placeholder="항목명" value="${escapeHtml(name)}">
+    <input type="text" inputmode="numeric" class="am-amount" placeholder="0" value="${amountDisplay}" oninput="onAmAmountInput(this,'${catKey}')">
+    <input type="date" class="am-date" value="${escapeHtml(date)}">
+    <input type="text" class="note-input am-note" placeholder="비고" value="${escapeHtml(note)}">
+    <button class="del-btn" onclick="document.getElementById('${rowId}').remove(); calcAssetTotal('${catKey}');">✕</button>`;
+  container.appendChild(wrap);
+  calcAssetTotal(catKey);
+}
+
+function onAmAmountInput(input,catKey){
+  const prevPos=input.selectionStart;
+  const digitsBeforeCursor=input.value.slice(0,prevPos).replace(/[^\d]/g,'').length;
+  const raw=input.value.replace(/[^\d]/g,'');
+  const formatted=raw ? parseInt(raw,10).toLocaleString() : '';
+  input.value=formatted;
+  let count=0,pos=formatted.length;
+  for(let i=0;i<formatted.length;i++){ if(/\d/.test(formatted[i])) count++; if(count===digitsBeforeCursor){pos=i+1;break;} }
+  if(digitsBeforeCursor===0) pos=0;
+  input.setSelectionRange(pos,pos);
+  calcAssetTotal(catKey);
+}
+
+function getAssetRows(catKey){
+  const container=document.getElementById(`am-${catKey}-rows`);
+  const rows=[];
+  container.querySelectorAll('.am-row').forEach(r=>{
+    const name=r.querySelector('.am-name').value.trim();
+    const amount=parseInt(r.querySelector('.am-amount').value.replace(/[^\d]/g,''),10)||0;
+    const date=r.querySelector('.am-date').value;
+    const note=r.querySelector('.am-note').value.trim();
+    if(name||amount||date||note) rows.push({name,amount,date,note});
+  });
+  return rows;
+}
+
+function calcAssetTotal(catKey){
+  const total=getAssetRows(catKey).reduce((s,r)=>s+r.amount,0);
+  const el=document.getElementById(`am-${catKey}-total`);
+  if(el) el.textContent=fmt(total);
+  return total;
+}
+function calcAllAssetTotals(){ ASSET_CATS.forEach(c=>calcAssetTotal(c.key)); }
+
+function clearAssetRows(){ ASSET_CATS.forEach(c=>{ const el=document.getElementById(`am-${c.key}-rows`); if(el) el.innerHTML=''; }); }
+
+function buildAssetItemsText(rows){
+  return rows.map(r=>{
+    let line=`${r.name}: ${r.amount.toLocaleString()}원`;
+    if(r.date) line+=` [${r.date}]`;
+    if(r.note) line+=` (${r.note})`;
+    return line;
+  }).join('\n');
+}
+
+function parseAssetItemsText(text){
+  if(!text) return [];
+  const rows=[];
+  text.split('\n').forEach(line=>{
+    if(!line.trim()) return;
+    const m=line.match(/^(.+?):\s*([\-\d,]+)원(?:\s*\[(.*?)\])?(?:\s*\((.*)\))?$/);
+    if(m) rows.push({name:m[1].trim(), amount:parseInt(m[2].replace(/,/g,''),10)||0, date:m[3]||'', note:m[4]||''});
+  });
+  return rows;
+}
+
+function initAssetMonthlyForm(){
+  const t=new Date();
+  const ym=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}`;
+  const el=document.getElementById('am-month');
+  if(el && !el.value) el.value=ym;
+  clearAssetRows();
+  ASSET_CATS.forEach(c=>{
+    addAssetRow(c.key,`${c.label}(h)`);
+    addAssetRow(c.key,`${c.label}(s)`);
+  });
+  calcAllAssetTotals();
+}
+
+async function loadAssetMonthly(filterId){
+  const month=document.getElementById('am-month').value;
+  if(!month){ showMsg('am-form-msg','입력 월을 선택하세요.',false); return; }
+  loading(true);
+  try{
+    const url = filterId
+      ? `${SUPABASE_URL}/rest/v1/monthly_house?select=*&id=eq.${filterId}`
+      : `${SUPABASE_URL}/rest/v1/monthly_house?select=*&year_month=eq.${month}&order=id.asc`;
+    const res=await fetch(url,{headers:HDR});
+    const data=await res.json();
+    clearAssetRows();
+    if(Array.isArray(data) && data.length){
+      const r=data[0];
+      ASSET_CATS.forEach(c=>{
+        const rows=parseAssetItemsText(r[c.detailCol]);
+        if(rows.length) rows.forEach(row=>addAssetRow(c.key,row.name,row.amount,row.date,row.note));
+        else { addAssetRow(c.key,`${c.label}(h)`); addAssetRow(c.key,`${c.label}(s)`); }
+      });
+      showMsg('am-form-msg','✓ 불러오기 완료',true);
+    }else{
+      initAssetMonthlyForm();
+      showMsg('am-form-msg','해당 월 데이터 없음 (새로 입력)',true);
+    }
+    calcAllAssetTotals();
+  }catch(e){ showMsg('am-form-msg','오류: '+e.message,false); }
+  finally{ loading(false); }
+}
+
+function editAssetMonthly(id,month){
+  document.getElementById('am-month').value=month;
+  loadAssetMonthly(id);
+  document.querySelector('#gensub-household-monthly .ie-form-card')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+async function saveAssetCategory(catKey){
+  const cat=ASSET_CATS.find(c=>c.key===catKey);
+  const msgId=`am-${catKey}-msg`;
+  const month=document.getElementById('am-month').value;
+  if(!month){ showMsg(msgId,'입력 월을 선택하세요.',false); return; }
+  const rows=getAssetRows(catKey);
+  const total=rows.reduce((s,r)=>s+r.amount,0);
+  const itemsText=buildAssetItemsText(rows);
+
+  loading(true);
+  try{
+    const prev=await fetchMonthRecord(month);
+    const fields={ [cat.totalCol]: total, [cat.detailCol]: itemsText };
+
+    let res;
+    if(prev && prev.id!=null){
+      res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?id=eq.${prev.id}`,{method:'PATCH',headers:HDR,body:JSON.stringify(fields)});
+    }else if(prev){
+      res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?year_month=eq.${month}`,{method:'PATCH',headers:HDR,body:JSON.stringify(fields)});
+    }else{
+      res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house`,{method:'POST',headers:HDR,body:JSON.stringify({year_month:month,...fields})});
+    }
+    if(!res.ok){ const e=await res.json(); throw new Error(e.message||`HTTP ${res.status}`); }
+
+    showMsg(msgId,`✓ ${cat.label} 저장 완료!`,true);
+    setStatus(`✓ ${month} ${cat.label} 저장됨`,'success');
+    calcAssetTotal(catKey);
+    loadAmRecent();
+  }catch(e){ showMsg(msgId,'오류: '+e.message,false); }
+  finally{ loading(false); }
+}
+
+async function loadAmRecent(){
+  try{
+    const res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=*&order=year_month.desc&limit=12`,{headers:HDR});
+    const data=await res.json();
+    const tbody=document.getElementById('am-recent-tbody');
+    if(!tbody) return;
+    if(!Array.isArray(data)||!data.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>'; return; }
+    tbody.innerHTML=data.map(r=>{
+      const idArg = r.id!=null ? `'${r.id}'` : 'null';
+      const cells = ASSET_CATS.map(c=>`<td class="num">${r[c.totalCol]!=null?fmt(r[c.totalCol]):'-'}</td>`).join('');
+      return `<tr>
+        <td>${r.year_month||''}</td>
+        ${cells}
+        <td style="white-space:nowrap;">
+          <button class="secondary" style="padding:3px 10px;font-size:12px;margin-right:4px;" onclick="editAssetMonthly(${idArg},'${r.year_month}')">편집</button>
+          <button class="danger" style="padding:3px 10px;font-size:12px;" onclick="deleteHouseMonthly(${idArg},'${r.year_month}')">삭제</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }catch(e){ showMsg('am-form-msg','⚠ '+e.message,false); }
 }
 
 /* 초기 로드 */
