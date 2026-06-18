@@ -779,8 +779,37 @@ async function loadHouseMonthly(filterId){
       else { addHmRow('sarang','expense','상가월세'); addHmRow('sarang','expense','직원월급'); }
       showMsg('hm-form-msg','✓ 불러오기 완료',true);
     }else{
-      initHouseMonthlyForm();
-      showMsg('hm-form-msg','해당 월 데이터 없음 (새로 입력)',true);
+      /* 이번 달 없음 → 이전 달 데이터 그대로 불러오기 (항목·금액·비고 유지) */
+      const prevMonth=prevM(month);
+      const prevRes=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=h_items,s_items&year_month=eq.${prevMonth}&order=id.asc`,{headers:HDR});
+      const prevData=await prevRes.json();
+      if(Array.isArray(prevData)&&prevData.length){
+        const pr=prevData[0];
+        const pHanRev=parseItemsText(pr.h_items,'revenue');
+        const pHanExp=parseItemsText(pr.h_items,'expense');
+        const pSarRev=parseItemsText(pr.s_items,'revenue');
+        const pSarExp=parseItemsText(pr.s_items,'expense');
+        if(pHanRev.length) pHanRev.forEach(row=>addHmRow('han','revenue',row.name,row.amount,row.note));
+        else { addHmRow('han','revenue','현금입금'); addHmRow('han','revenue','카드입금'); addHmRow('han','revenue','공단입금'); }
+        if(pHanExp.length) pHanExp.forEach(row=>addHmRow('han','expense',row.name,row.amount,row.note));
+        else { addHmRow('han','expense','상가월세'); addHmRow('han','expense','직원월급'); addHmRow('han','expense','퇴직금'); addHmRow('han','expense','예비비'); }
+        if(pSarRev.length) pSarRev.forEach(row=>addHmRow('sarang','revenue',row.name,row.amount,row.note));
+        else { addHmRow('sarang','revenue','현금입금'); addHmRow('sarang','revenue','카드입금'); addHmRow('sarang','revenue','공단입금'); }
+        if(pSarExp.length) pSarExp.forEach(row=>addHmRow('sarang','expense',row.name,row.amount,row.note));
+        else { addHmRow('sarang','expense','상가월세'); addHmRow('sarang','expense','직원월급'); addHmRow('sarang','expense','퇴직금'); addHmRow('sarang','expense','예비비'); }
+        /* 저장일은 오늘로 초기화 */
+        const today=todayDateStr();
+        ['hm-han-rev-savedate','hm-han-exp-savedate','hm-sarang-rev-savedate','hm-sarang-exp-savedate'].forEach(id=>{
+          const el=document.getElementById(id); if(el) el.value=today;
+        });
+        ['hm-han-rev-lastsaved','hm-han-exp-lastsaved','hm-sarang-rev-lastsaved','hm-sarang-exp-lastsaved'].forEach(id=>{
+          const el=document.getElementById(id); if(el) el.textContent='최종저장: -';
+        });
+        showMsg('hm-form-msg',`✓ ${prevMonth} 데이터 불러옴 — 수정 후 저장하세요`,true);
+      }else{
+        initHouseMonthlyForm();
+        showMsg('hm-form-msg','데이터 없음 (새로 입력)',true);
+      }
     }
     calcHmTotals();
   }catch(e){ showMsg('hm-form-msg','오류: '+e.message,false); }
