@@ -335,7 +335,73 @@ tr:hover td { background: #f5f5f0; }
         </div>
 
         <div id="am-categories"></div>
-      </div>
+
+        <!-- ───────── 11조 선교헌금 예비비 ───────── -->
+        <div style="border-top:1.5px solid #ddddd5;margin-top:28px;padding-top:22px;">
+
+          <!-- 11조 -->
+          <div class="section-title" style="font-size:14px;font-weight:600;color:#1a1a18;border-bottom:1px solid #e5e5de;margin-top:0;">
+            <span>✝ 11조 선교헌금 예비비</span>
+          </div>
+
+          <div class="asset-section">
+            <h3>이번달 11조 <span class="total-val" id="jo11-display">-</span></h3>
+          </div>
+
+          <!-- 선교헌금 -->
+          <div class="asset-section" style="margin-top:12px;">
+            <h3>💌 선교헌금 <span class="total-val" id="mission-total-display">잔액: -</span></h3>
+            <div style="display:flex;gap:24px;margin-bottom:14px;flex-wrap:wrap;font-size:13px;color:#444441;">
+              <span>이월선교헌금: <strong id="mission-carryover">-</strong></span>
+              <span>이번달선교헌금(mission): <strong id="mission-this">-</strong></span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 130px 145px 1fr 28px;gap:6px;margin-bottom:6px;font-size:12px;color:#888780;padding:0 2px;">
+              <span>항목</span><span>금액</span><span>확인날짜</span><span>비고</span><span></span>
+            </div>
+            <div id="mission-rows"></div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">
+              <button class="add-btn" onclick="addFinRow('mission')">+ 항목 추가</button>
+              <button style="padding:5px 14px;font-size:13px;" onclick="saveFinSection('mission')">선교헌금 저장</button>
+              <span id="mission-msg" class="form-msg"></span>
+            </div>
+          </div>
+
+          <!-- 예비비 -->
+          <div class="asset-section" style="margin-top:12px;">
+            <h3>🏦 한강 예비비 <span class="total-val" id="reserve-h-display">잔액: -</span></h3>
+            <div style="display:flex;gap:24px;margin-bottom:10px;flex-wrap:wrap;font-size:13px;color:#444441;align-items:center;">
+              <span>이월한강예비비: <strong id="reserve-h-carryover">-</strong></span>
+              <span>이번달한강예비비: <input type="text" inputmode="numeric" id="reserve-h-income" placeholder="0" style="width:110px;display:inline-block;" oninput="onFinAmountInput(this);calcReserveTotal('h')"></span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 130px 145px 1fr 28px;gap:6px;margin-bottom:6px;font-size:12px;color:#888780;padding:0 2px;">
+              <span>항목</span><span>금액</span><span>확인날짜</span><span>비고</span><span></span>
+            </div>
+            <div id="reserve-h-rows"></div>
+            <button class="add-btn" style="margin-top:8px;" onclick="addFinRow('reserve-h')">+ 항목 추가</button>
+          </div>
+
+          <div class="asset-section" style="margin-top:12px;">
+            <h3>🏦 사랑 예비비 <span class="total-val" id="reserve-s-display">잔액: -</span></h3>
+            <div style="display:flex;gap:24px;margin-bottom:10px;flex-wrap:wrap;font-size:13px;color:#444441;align-items:center;">
+              <span>이월사랑예비비: <strong id="reserve-s-carryover">-</strong></span>
+              <span>이번달사랑예비비: <input type="text" inputmode="numeric" id="reserve-s-income" placeholder="0" style="width:110px;display:inline-block;" oninput="onFinAmountInput(this);calcReserveTotal('s')"></span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 130px 145px 1fr 28px;gap:6px;margin-bottom:6px;font-size:12px;color:#888780;padding:0 2px;">
+              <span>항목</span><span>금액</span><span>확인날짜</span><span>비고</span><span></span>
+            </div>
+            <div id="reserve-s-rows"></div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">
+              <button class="add-btn" onclick="addFinRow('reserve-s')">+ 항목 추가</button>
+              <div style="margin-left:auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <span style="font-size:13px;color:#444441;">reserve_total: <strong id="reserve-total-display">-</strong></span>
+                <button style="padding:5px 14px;font-size:13px;" onclick="saveFinSection('reserve')">예비비 저장</button>
+                <span id="reserve-msg" class="form-msg"></span>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /11조선교헌금예비비 -->
+      </div><!-- /ie-form-card -->
 
       <div class="recent-card">
         <h2>최근 입력 데이터 <span style="font-size:12px;font-weight:400;color:#888780;">(monthly_house · 자산)</span></h2>
@@ -920,6 +986,7 @@ async function loadAssetMonthly(filterId){
       }
     }
     calcAllAssetTotals();
+    await loadFinSections(month, prevM(month));
   }catch(e){ showMsg('am-form-msg','오류: '+e.message,false); }
   finally{ loading(false); }
 }
@@ -982,6 +1049,194 @@ async function loadAmRecent(){
       </tr>`;
     }).join('');
   }catch(e){ showMsg('am-form-msg','⚠ '+e.message,false); }
+}
+
+/* ══ 11조 · 선교헌금 · 예비비 ══ */
+let finRowSeq=0;
+function addFinRow(kind,name='',amount='',date='',note=''){
+  const rid='finrow'+(++finRowSeq);
+  const container=document.getElementById(`${kind}-rows`);
+  if(!container) return;
+  const wrap=document.createElement('div');
+  wrap.className='am-row'; wrap.id=rid;
+  const disp=(amount!==''&&amount!=null&&amount!==0)?formatHmNumber(amount):(amount===0?'0':'');
+  wrap.innerHTML=`
+    <input type="text" class="am-name" placeholder="항목명" value="${escapeHtml(name)}">
+    <input type="text" inputmode="numeric" class="am-amount" placeholder="0" value="${disp}"
+      oninput="onFinAmountInput(this);${kind==='mission'?'calcMissionTotal()':kind.startsWith('reserve')?`calcReserveTotal('${kind.split('-')[1]}')`:''}"
+    >
+    <input type="date" class="am-date" value="${escapeHtml(date)}">
+    <input type="text" class="note-input am-note" placeholder="비고" value="${escapeHtml(note)}">
+    <button class="del-btn" onclick="document.getElementById('${rid}').remove();${kind==='mission'?'calcMissionTotal()':kind.startsWith('reserve')?`calcReserveTotal('${kind.split('-')[1]}')`:''}" >✕</button>`;
+  container.appendChild(wrap);
+}
+
+function onFinAmountInput(input){
+  const prevPos=input.selectionStart;
+  const digitsBeforeCursor=input.value.slice(0,prevPos).replace(/[^\d]/g,'').length;
+  const raw=input.value.replace(/[^\d]/g,'');
+  const formatted=raw?parseInt(raw,10).toLocaleString():'';
+  input.value=formatted;
+  let count=0,pos=formatted.length;
+  for(let i=0;i<formatted.length;i++){if(/\d/.test(formatted[i]))count++;if(count===digitsBeforeCursor){pos=i+1;break;}}
+  if(digitsBeforeCursor===0) pos=0;
+  input.setSelectionRange(pos,pos);
+}
+
+function getFinRows(kind){
+  const rows=[];
+  document.querySelectorAll(`#${kind}-rows .am-row`).forEach(r=>{
+    const name=r.querySelector('.am-name').value.trim();
+    const amount=parseInt(r.querySelector('.am-amount').value.replace(/[^\d]/g,''),10)||0;
+    const date=r.querySelector('.am-date').value;
+    const note=r.querySelector('.am-note').value.trim();
+    if(name||amount||date||note) rows.push({name,amount,date,note});
+  });
+  return rows;
+}
+
+function sumFinRows(kind){ return getFinRows(kind).reduce((s,r)=>s+r.amount,0); }
+
+function calcMissionTotal(){
+  const carryover=parseInt(document.getElementById('mission-carryover').dataset.val||0,10);
+  const thisMonth=parseInt(document.getElementById('mission-this').dataset.val||0,10);
+  const used=sumFinRows('mission');
+  const total=carryover+thisMonth-used;
+  document.getElementById('mission-total-display').textContent='잔액: '+fmt(total);
+  return total;
+}
+
+function calcReserveTotal(side){
+  const carryover=parseInt(document.getElementById(`reserve-${side}-carryover`).dataset.val||0,10);
+  const incomeRaw=document.getElementById(`reserve-${side}-income`).value.replace(/[^\d]/g,'');
+  const income=parseInt(incomeRaw,10)||0;
+  const used=sumFinRows(`reserve-${side}`);
+  const bal=carryover+income-used;
+  document.getElementById(`reserve-${side}-display`).textContent='잔액: '+fmt(bal);
+  const h=parseInt((document.getElementById('reserve-h-display').textContent.replace(/[^0-9\-]/g,'')||0),10);
+  const s=parseInt((document.getElementById('reserve-s-display').textContent.replace(/[^0-9\-]/g,'')||0),10);
+  /* 합산 표시는 raw 계산값 사용 */
+  const hVal = side==='h' ? bal : parseInt(document.getElementById('reserve-h-carryover').dataset.raw||0,10);
+  const sVal = side==='s' ? bal : parseInt(document.getElementById('reserve-s-carryover').dataset.raw||0,10);
+  document.getElementById('reserve-total-display').textContent=fmt(hVal+sVal);
+  return bal;
+}
+
+function buildFinItemsText(rows){ return rows.map(r=>`${r.name}: ${r.amount.toLocaleString()}원${r.date?' ['+r.date+']':''}${r.note?' ('+r.note+')':''}`).join('\n'); }
+function parseFinItemsText(text){
+  if(!text) return [];
+  return text.split('\n').filter(l=>l.trim()).map(line=>{
+    const m=line.match(/^(.+?):\s*([\-\d,]+)원(?:\s*\[(.*?)\])?(?:\s*\((.*)\))?$/);
+    return m?{name:m[1].trim(),amount:parseInt(m[2].replace(/,/g,''),10)||0,date:m[3]||'',note:m[4]||''}:null;
+  }).filter(Boolean);
+}
+
+/* 11조·선교헌금·예비비 불러오기 (loadAssetMonthly 내부에서 호출됨) */
+async function loadFinSections(month, prevMonth){
+  /* 이번달 레코드 */
+  const res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=*&year_month=eq.${month}&order=id.asc`,{headers:HDR});
+  const data=await res.json();
+  const cur=Array.isArray(data)&&data.length?data[0]:null;
+
+  /* 이전달 레코드 */
+  const prevRes=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=mission_total,reserve_h,reserve_s&year_month=eq.${prevMonth}&order=id.asc`,{headers:HDR});
+  const prevData=await prevRes.json();
+  const prev=Array.isArray(prevData)&&prevData.length?prevData[0]:null;
+
+  /* 11조 표시 */
+  const jo11val=cur?.['11jo']??null;
+  document.getElementById('jo11-display').textContent=jo11val!=null?fmt(jo11val)+' ('+jo11val.toLocaleString()+'원)':'-';
+
+  /* 선교헌금 */
+  const carryoverMission=prev?.mission_total??0;
+  const thisMission=cur?.mission??0;
+  const mCarry=document.getElementById('mission-carryover');
+  mCarry.textContent=carryoverMission.toLocaleString()+'원';
+  mCarry.dataset.val=carryoverMission;
+  const mThis=document.getElementById('mission-this');
+  mThis.textContent=thisMission.toLocaleString()+'원';
+  mThis.dataset.val=thisMission;
+  document.getElementById('mission-rows').innerHTML='';
+  parseFinItemsText(cur?.mission_m).forEach(r=>addFinRow('mission',r.name,r.amount,r.date,r.note));
+  calcMissionTotal();
+
+  /* 예비비 한강 */
+  const carryH=prev?.reserve_h??0;
+  const rhCarry=document.getElementById('reserve-h-carryover');
+  rhCarry.textContent=carryH.toLocaleString()+'원';
+  rhCarry.dataset.val=carryH;
+  rhCarry.dataset.raw=cur?.reserve_h??carryH;
+  const rhIncome=cur?.reserve_h_in??0;
+  document.getElementById('reserve-h-income').value=rhIncome?rhIncome.toLocaleString():'';
+  document.getElementById('reserve-h-rows').innerHTML='';
+  parseFinItemsText(cur?.reserve_h_m).forEach(r=>addFinRow('reserve-h',r.name,r.amount,r.date,r.note));
+
+  /* 예비비 사랑 */
+  const carryS=prev?.reserve_s??0;
+  const rsCarry=document.getElementById('reserve-s-carryover');
+  rsCarry.textContent=carryS.toLocaleString()+'원';
+  rsCarry.dataset.val=carryS;
+  rsCarry.dataset.raw=cur?.reserve_s??carryS;
+  const rsIncome=cur?.reserve_s_in??0;
+  document.getElementById('reserve-s-income').value=rsIncome?rsIncome.toLocaleString():'';
+  document.getElementById('reserve-s-rows').innerHTML='';
+  parseFinItemsText(cur?.reserve_s_m).forEach(r=>addFinRow('reserve-s',r.name,r.amount,r.date,r.note));
+
+  calcReserveTotal('h');
+  calcReserveTotal('s');
+}
+
+async function saveFinSection(kind){
+  const msgId = kind==='mission' ? 'mission-msg' : 'reserve-msg';
+  const month=document.getElementById('am-month').value;
+  if(!month){ showMsg(msgId,'입력 월을 선택하세요.',false); return; }
+
+  loading(true);
+  try{
+    const prev=await fetchMonthRecord(month);
+    let fields={};
+
+    if(kind==='mission'){
+      const carryover=parseInt(document.getElementById('mission-carryover').dataset.val||0,10);
+      const thisMission=parseInt(document.getElementById('mission-this').dataset.val||0,10);
+      const rows=getFinRows('mission');
+      const used=rows.reduce((s,r)=>s+r.amount,0);
+      const mission_total=carryover+thisMission-used;
+      fields={ mission_m: buildFinItemsText(rows), mission_total };
+    } else {
+      /* 한강 */
+      const carryH=parseInt(document.getElementById('reserve-h-carryover').dataset.val||0,10);
+      const incomeH=parseInt(document.getElementById('reserve-h-income').value.replace(/[^\d]/g,''),10)||0;
+      const rowsH=getFinRows('reserve-h');
+      const usedH=rowsH.reduce((s,r)=>s+r.amount,0);
+      const reserve_h=carryH+incomeH-usedH;
+      /* 사랑 */
+      const carryS=parseInt(document.getElementById('reserve-s-carryover').dataset.val||0,10);
+      const incomeS=parseInt(document.getElementById('reserve-s-income').value.replace(/[^\d]/g,''),10)||0;
+      const rowsS=getFinRows('reserve-s');
+      const usedS=rowsS.reduce((s,r)=>s+r.amount,0);
+      const reserve_s=carryS+incomeS-usedS;
+      fields={
+        reserve_h_in: incomeH, reserve_h_m: buildFinItemsText(rowsH), reserve_h,
+        reserve_s_in: incomeS, reserve_s_m: buildFinItemsText(rowsS), reserve_s,
+        reserve_total: reserve_h+reserve_s
+      };
+    }
+
+    let res;
+    if(prev && prev.id!=null){
+      res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?id=eq.${prev.id}`,{method:'PATCH',headers:HDR,body:JSON.stringify(fields)});
+    }else if(prev){
+      res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?year_month=eq.${month}`,{method:'PATCH',headers:HDR,body:JSON.stringify(fields)});
+    }else{
+      res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house`,{method:'POST',headers:HDR,body:JSON.stringify({year_month:month,...fields})});
+    }
+    if(!res.ok){ const e=await res.json(); throw new Error(e.message||`HTTP ${res.status}`); }
+    showMsg(msgId, kind==='mission'?'✓ 선교헌금 저장 완료!':'✓ 예비비 저장 완료!', true);
+    setStatus(`✓ ${month} ${kind==='mission'?'선교헌금':'예비비'} 저장됨`,'success');
+    loadAmRecent();
+  }catch(e){ showMsg(msgId,'오류: '+e.message,false); }
+  finally{ loading(false); }
 }
 
 /* 초기 로드 */
