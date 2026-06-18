@@ -497,7 +497,7 @@ async function loadGenRecent(){
     const res=await fetch(`${SUPABASE_URL}/rest/v1/daily_han?select=*&order=date.desc&limit=20`,{headers:HDR});
     const data=await res.json();
     const tbody=document.getElementById('gen-recent-tbody');
-    if(!Array.isArray(data)||!data.length){tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>';return;}
+    if(!Array.isArray(data)||!data.length){tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>';setStatus('✓ 연결됨','success');return;}
     tbody.innerHTML=data.map(r=>`<tr>
       <td>${r.date||''}</td><td>${r.day_of_week==='일'?'<span class="badge badge-sun">일</span>':(r.day_of_week||'')}</td>
       <td class="num">${r.total_patients??'-'}</td><td class="num">${r.new_patients??'-'}</td><td class="num">${r.return_patients??'-'}</td>
@@ -507,7 +507,8 @@ async function loadGenRecent(){
       <td class="num">${r.deposit!=null?r.deposit.toLocaleString():'-'}</td>
       <td><button class="danger" style="padding:3px 10px;font-size:12px;" onclick="deleteHangangDaily('${r.date}')">삭제</button></td>
     </tr>`).join('');
-  }catch(e){showMsg('gen-form-msg','⚠ '+e.message,false);}
+    setStatus('✓ 연결됨','success');
+  }catch(e){showMsg('gen-form-msg','⚠ '+e.message,false);setStatus('⚠ 연결 실패: '+e.message,'error');}
 }
 async function deleteHangangDaily(date){ if(!confirm(`${date} 삭제?`))return; try{ await fetch(`${SUPABASE_URL}/rest/v1/daily_han?date=eq.${date}`,{method:'DELETE',headers:HDR}); loadGenRecent(); }catch(e){} }
 
@@ -1052,22 +1053,29 @@ async function loadAmRecent(){
 }
 
 /* ══ 11조 · 선교헌금 · 예비비 ══ */
+function getFinCalcCall(kind){
+  if(kind==='mission') return 'calcMissionTotal()';
+  if(kind==='reserve-h') return "calcReserveTotal('h')";
+  if(kind==='reserve-s') return "calcReserveTotal('s')";
+  return '';
+}
+
 let finRowSeq=0;
 function addFinRow(kind,name='',amount='',date='',note=''){
   const rid='finrow'+(++finRowSeq);
-  const container=document.getElementById(`${kind}-rows`);
+  const container=document.getElementById(kind+'-rows');
   if(!container) return;
   const wrap=document.createElement('div');
   wrap.className='am-row'; wrap.id=rid;
-  const disp=(amount!==''&&amount!=null&&amount!==0)?formatHmNumber(amount):(amount===0?'0':'');
+  const disp=(amount!==''&&amount!=null&&amount!==0)?parseInt(String(amount).replace(/[^\d]/g,''),10).toLocaleString():(amount===0?'0':'');
+  const calcCall=getFinCalcCall(kind);
   wrap.innerHTML=`
     <input type="text" class="am-name" placeholder="항목명" value="${escapeHtml(name)}">
     <input type="text" inputmode="numeric" class="am-amount" placeholder="0" value="${disp}"
-      oninput="onFinAmountInput(this);${kind==='mission'?'calcMissionTotal()':kind.startsWith('reserve')?`calcReserveTotal('${kind.split('-')[1]}')`:''}"
-    >
+      oninput="onFinAmountInput(this);${calcCall}">
     <input type="date" class="am-date" value="${escapeHtml(date)}">
     <input type="text" class="note-input am-note" placeholder="비고" value="${escapeHtml(note)}">
-    <button class="del-btn" onclick="document.getElementById('${rid}').remove();${kind==='mission'?'calcMissionTotal()':kind.startsWith('reserve')?`calcReserveTotal('${kind.split('-')[1]}')`:''}" >✕</button>`;
+    <button class="del-btn" onclick="document.getElementById('${rid}').remove();${calcCall}">✕</button>`;
   container.appendChild(wrap);
 }
 
