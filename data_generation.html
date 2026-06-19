@@ -164,10 +164,18 @@ tr:hover td { background: #f5f5f0; }
   <div class="header-top"><div><h1>🏥 병원 가계 통계</h1><div class="subtitle">daily_han · Supabase</div></div></div>
   <div class="tabs">
     <button class="tab active" onclick="showPage('gen',this)">데이터 생성</button>
-
+    <button class="tab" onclick="showPage('viewer',this)">데이터 뷰어</button>
   </div>
 </div>
 <div id="status-bar" class="status-bar loading">⏳ 연결 중...</div>
+
+
+<!-- ════════════════════════════════
+     데이터 뷰어 페이지 (han_sarang_house_viewer.html 내장)
+════════════════════════════════ -->
+<div id="page-viewer" class="page">
+  <iframe id="viewer-frame" src="han_sarang_house_viewer.html" style="width:100%; height:calc(100vh - 90px); border:none; display:block;"></iframe>
+</div>
 
 
 <!-- ════════════════════════════════
@@ -410,7 +418,9 @@ tr:hover td { background: #f5f5f0; }
             <thead><tr>
               <th>월</th><th class="num">통장</th><th class="num">주식</th><th class="num">적금</th>
               <th class="num">정기예금</th><th class="num">노란우산</th><th class="num">보증금</th>
-              <th class="num">퇴직연금</th><th class="num">연금보험</th><th></th>
+              <th class="num">퇴직연금</th><th class="num">연금보험</th>
+              <th class="num">A.현금</th><th class="num">B.장기현금</th><th class="num">C.연금성</th><th class="num">D.총합</th>
+              <th></th>
             </tr></thead>
             <tbody id="am-recent-tbody"></tbody>
           </table>
@@ -1065,13 +1075,15 @@ async function loadAmRecent(){
     const data=await res.json();
     const tbody=document.getElementById('am-recent-tbody');
     if(!tbody) return;
-    if(!Array.isArray(data)||!data.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>'; return; }
+    if(!Array.isArray(data)||!data.length){ tbody.innerHTML='<tr><td colspan="14" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>'; return; }
     tbody.innerHTML=data.map(r=>{
       const idArg = r.id!=null ? `'${r.id}'` : 'null';
       const cells = ASSET_CATS.map(c=>`<td class="num">${r[c.totalCol]!=null?fmt(r[c.totalCol]):'-'}</td>`).join('');
+      const abcd = ['a_cash','b_longterm','c_pension','d_total'].map(k=>`<td class="num">${r[k]!=null?fmt(r[k]):'-'}</td>`).join('');
       return `<tr>
         <td>${r.year_month||''}</td>
         ${cells}
+        ${abcd}
         <td style="white-space:nowrap;">
           <button class="secondary" style="padding:3px 10px;font-size:12px;margin-right:4px;" onclick="editAssetMonthly(${idArg},'${r.year_month}')">편집</button>
           <button class="danger" style="padding:3px 10px;font-size:12px;" onclick="deleteHouseMonthly(${idArg},'${r.year_month}')">삭제</button>
