@@ -201,16 +201,24 @@ tr:hover td { background: #f5f5f0; }
           <div class="form-field"><label>총 환자수</label><input type="number" id="g-total" min="0" placeholder="0"></div>
           <div class="form-field"><label>초진</label><input type="number" id="g-new" min="0" placeholder="0"></div>
           <div class="form-field"><label>재진</label><input type="number" id="g-return" min="0" placeholder="0"></div>
-          <div class="form-field"><label>일매출 (원)</label><input type="number" id="g-revenue" min="0" placeholder="0"></div>
-          <div class="form-field"><label>현금 (원)</label><input type="number" id="g-cash" min="0" placeholder="0"></div>
-          <div class="form-field"><label>카드 (원)</label><input type="number" id="g-card" min="0" placeholder="0"></div>
-          <div class="form-field"><label>청구액 (원)</label><input type="number" id="g-claim" min="0" placeholder="0"></div>
+          <div class="form-field"><label>일매출 (원) <span style="color:#888780;font-weight:400;">- 자동계산</span></label><input type="number" id="g-revenue" min="0" placeholder="0" readonly style="background:#f5f5f0;color:#888780;"></div>
+          <div class="form-field"><label>현금 (원)</label><input type="number" id="g-cash" min="0" placeholder="0" oninput="recalcRevenue()"></div>
+          <div class="form-field"><label>카드 (원)</label><input type="number" id="g-card" min="0" placeholder="0" oninput="recalcRevenue()"></div>
+          <div class="form-field"><label>청구액 (원)</label><input type="number" id="g-claim" min="0" placeholder="0" oninput="recalcRevenue()"></div>
           <div class="form-field"><label>입금액 (원)</label><input type="number" id="g-deposit" min="0" placeholder="0"></div>
         </div>
         <div class="form-actions">
           <button onclick="saveHangangDaily()">저장</button>
           <button class="secondary" onclick="clearHangangDailyForm()">초기화</button>
+          <button class="secondary" onclick="toggleMonthClose()">📅 이번달 마감</button>
           <span id="gen-form-msg" class="form-msg"></span>
+        </div>
+        <div id="month-close-panel" style="display:none; margin-top:16px; padding:16px 18px; background:#f1efe8; border-radius:10px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+            <strong style="font-size:14px;" id="month-close-title">이번달 마감</strong>
+            <span style="font-size:12px; color:#888780;" id="month-close-days"></span>
+          </div>
+          <div id="month-close-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px,1fr)); gap:10px;"></div>
         </div>
       </div>
       <div class="recent-card">
@@ -495,9 +503,51 @@ document.getElementById('g-date').addEventListener('change',function(){
   const gd=document.getElementById('g-date');
   if(gd){ gd.value=yd; document.getElementById('g-dow').value=DOW[t.getDay()]; }
 })();
+function recalcRevenue(){
+  const cash = +(document.getElementById('g-cash').value || 0);
+  const card = +(document.getElementById('g-card').value || 0);
+  const claim = +(document.getElementById('g-claim').value || 0);
+  document.getElementById('g-revenue').value = (cash + card + claim) || '';
+}
 function clearHangangDailyForm(){
   ['g-total','g-new','g-return','g-revenue','g-cash','g-card','g-claim','g-deposit'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
 }
+async function toggleMonthClose(){
+  const panel = document.getElementById('month-close-panel');
+  if(panel.style.display === 'block'){ panel.style.display = 'none'; return; }
+  const dateVal = document.getElementById('g-date').value || (()=>{const t=new Date();return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;})();
+  const ym = dateVal.slice(0,7);
+  const fromDate = `${ym}-01`;
+  const toDate = `${ym}-31`;
+  loading(true);
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/daily_han?select=*&date=gte.${fromDate}&date=lte.${toDate}&order=date.asc`,{headers:HDR});
+    if(!res.ok){ const e=await res.json(); throw new Error(e.message||`HTTP ${res.status}`); }
+    const rows = await res.json();
+    let totalP=0, newP=0, returnP=0, revenue=0, cash=0, card=0, claim=0, deposit=0, days=0;
+    rows.forEach(r=>{
+      totalP += r.total_patients||0; newP += r.new_patients||0; returnP += r.return_patients||0;
+      revenue += r.daily_revenue||0; cash += r.cash||0; card += r.card||0; claim += r.insurance_claim||0; deposit += r.deposit||0;
+      if((r.total_patients||0)>0 || r.daily_revenue) days += 1;
+    });
+    document.getElementById('month-close-title').textContent = `${ym} 마감 결과`;
+    document.getElementById('month-close-days').textContent = `진료일 ${days}일 / 입력 ${rows.length}건`;
+    const grid = document.getElementById('month-close-grid');
+    const card_ = (label,val)=>`<div style="background:#fff; border-radius:8px; padding:10px 12px;">
+        <div style="font-size:11px;color:#888780;margin-bottom:3px;">${label}</div>
+        <div style="font-size:16px;font-weight:500;">${val.toLocaleString()}</div>
+      </div>`;
+    grid.innerHTML = card_('총 환자', totalP)+card_('총 초진', newP)+card_('총 재진', returnP)
+      + card_('총 매출 (원)', revenue) + card_('총 현금 (원)', cash) + card_('총 카드 (원)', card)
+      + card_('총 청구액 (원)', claim) + card_('총 입금액 (원)', deposit);
+    panel.style.display = 'block';
+  }catch(e){
+    showMsg('gen-form-msg','⚠ 마감 조회 실패: '+e.message,false);
+  }finally{
+    loading(false);
+  }
+}
+
 async function saveHangangDaily(){
   const dateVal=document.getElementById('g-date').value;
   if(!dateVal){showMsg('gen-form-msg','날짜를 입력하세요.',false);return;}
