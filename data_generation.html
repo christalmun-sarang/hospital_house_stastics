@@ -517,8 +517,10 @@ async function toggleMonthClose(){
   if(panel.style.display === 'block'){ panel.style.display = 'none'; return; }
   const dateVal = document.getElementById('g-date').value || (()=>{const t=new Date();return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;})();
   const ym = dateVal.slice(0,7);
+  const [yy, mm] = ym.split('-').map(Number);
+  const lastDay = new Date(yy, mm, 0).getDate(); // 해당 월의 실제 마지막 날
   const fromDate = `${ym}-01`;
-  const toDate = `${ym}-31`;
+  const toDate = `${ym}-${String(lastDay).padStart(2,'0')}`;
   loading(true);
   try{
     const res = await fetch(`${SUPABASE_URL}/rest/v1/daily_han?select=*&date=gte.${fromDate}&date=lte.${toDate}&order=date.asc`,{headers:HDR});
