@@ -119,6 +119,7 @@ table { padding-right: 10px; }
     <select id="period-mode" onchange="onPeriodModeChange()">
       <option value="year">연도별</option>
       <option value="month">월별</option>
+      <option value="week">주별 (월~토)</option>
       <option value="day">일별 날짜검색</option>
     </select>
 
@@ -130,6 +131,12 @@ table { padding-right: 10px; }
 
     <span id="ctrl-month-year" style="display:none;">
       <select id="month-year"></select>
+    </span>
+
+    <span id="ctrl-week-range" style="display:none;">
+      <input type="date" id="week-from">
+      <span class="tilde">~</span>
+      <input type="date" id="week-to">
     </span>
 
     <span id="ctrl-day-range" style="display:none;">
@@ -396,6 +403,10 @@ function initSelectors(){
   const monthAgo = new Date(today); monthAgo.setMonth(monthAgo.getMonth()-1);
   document.getElementById('day-to').value = fmtDate(today);
   document.getElementById('day-from').value = fmtDate(monthAgo);
+
+  const weeksAgo = new Date(today); weeksAgo.setDate(weeksAgo.getDate()-7*8);
+  document.getElementById('week-to').value = fmtDate(today);
+  document.getElementById('week-from').value = fmtDate(weeksAgo);
 }
 function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
@@ -403,6 +414,7 @@ function onPeriodModeChange(){
   currentMode = document.getElementById('period-mode').value;
   document.getElementById('ctrl-year-range').style.display = currentMode==='year' ? 'inline-flex' : 'none';
   document.getElementById('ctrl-month-year').style.display = currentMode==='month' ? 'inline-flex' : 'none';
+  document.getElementById('ctrl-week-range').style.display = currentMode==='week' ? 'inline-flex' : 'none';
   document.getElementById('ctrl-day-range').style.display = currentMode==='day' ? 'inline-flex' : 'none';
 }
 
@@ -450,6 +462,10 @@ async function runQuery(){
     } else if(currentMode==='month'){
       const y = +document.getElementById('month-year').value;
       fromDate = `${y}-01-01`; toDate = `${y}-12-31`;
+    } else if(currentMode==='week'){
+      fromDate = document.getElementById('week-from').value;
+      toDate = document.getElementById('week-to').value;
+      if(!fromDate || !toDate){ setStatus('⚠ 날짜를 선택하세요','error'); loading(false); return; }
     } else {
       fromDate = document.getElementById('day-from').value;
       toDate = document.getElementById('day-to').value;
@@ -495,6 +511,8 @@ function renderAll(){
     renderYearMode();
   } else if(currentMode==='month'){
     renderMonthMode();
+  } else if(currentMode==='week'){
+    renderWeekMode();
   } else {
     renderDayMode();
   }
@@ -641,7 +659,57 @@ function renderDayMode(){
   renderDetailTable();
 }
 
-/* ── 차트 ── */
+/* ── 주별(월~토) 집계 ── */
+function mondayKeyStr(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const day = d.getDay(); // 0=일 ... 6=토
+  const diff = day===0 ? -6 : (1-day); // 그 주의 월요일로 이동
+  d.setDate(d.getDate()+diff);
+  return fmtDate(d);
+}
+function weekRangeLabel(mondayStr){
+  const mon = new Date(mondayStr+'T00:00:00');
+  const sat = new Date(mon); sat.setDate(sat.getDate()+5);
+  const f = d => `${d.getMonth()+1}/${d.getDate()}`;
+  return `${f(mon)}~${f(sat)}`;
+}
+
+function renderWeekMode(){
+  // 일요일(휴진)은 주별 집계에서 제외
+  const rows = currentRows.filter(r => new Date(r.date+'T00:00:00').getDay() !== 0);
+  const groups = aggregateByKey(rows, r=>mondayKeyStr(r.date), (r,k)=>k);
+  const groupsLabeled = groups.map(g=>({
+    ...g,
+    weekLabel: weekRangeLabel(g.key),
+    avgRevenue: g.days ? g.revenue/g.days : 0,
+    avgPatients: g.days ? g.patients/g.days : 0,
+  }));
+
+  setSummary(computeSummary(rows));
+  const wf = document.getElementById('week-from').value, wt = document.getElementById('week-to').value;
+  document.getElementById('chart-title-revenue').textContent = `${wf}~${wt} 주별 매출 (월~토)`;
+  document.getElementById('chart-title-patients').textContent = `${wf}~${wt} 주별 환자수 (월~토)`;
+  document.getElementById('chart-title-new').textContent = `${wf}~${wt} 주별 초진환자수 (월~토)`;
+  document.getElementById('table-title').textContent = '주별 상세 (월~토, 일요일 제외)';
+
+  drawCharts(groupsLabeled.map(g=>g.weekLabel), groupsLabeled.map(g=>g.revenue), groupsLabeled.map(g=>g.patients), groupsLabeled.map(g=>g.newp));
+
+  detailCols = [
+    {key:'weekLabel', label:'주(월~토)', type:'text'},
+    {key:'key', label:'주시작(월)', type:'text'},
+    {key:'revenue', label:'매출', type:'num'},
+    {key:'patients', label:'환자수', type:'num'},
+    {key:'newp', label:'초진', type:'num'},
+    {key:'avgRevenue', label:'일평균매출', type:'num'},
+    {key:'avgPatients', label:'일평균환자', type:'num'},
+    {key:'days', label:'진료일', type:'num'},
+  ];
+  detailRows = groupsLabeled;
+  sortState = {key:null, dir:1};
+  renderDetailTable();
+}
+
+
 function drawCharts(labels, revenue, patients, newp, prevRevenue, prevPatients){
   if(chartRevenue) chartRevenue.destroy();
   if(chartPatients) chartPatients.destroy();
