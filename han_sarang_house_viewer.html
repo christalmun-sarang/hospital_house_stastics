@@ -485,7 +485,7 @@ function aggregateByKey(rows, keyFn, labelFn){
     g.cash += r.cash||0;
     g.card += r.card||0;
     g.claim += r.insurance_claim||0;
-    g.days += 1;
+    if((r.total_patients||0) > 0) g.days += 1; // 휴진일(환자 0명)은 진료일에서 제외
   });
   return Array.from(map.values()).sort((a,b)=>a.key.localeCompare(b.key));
 }
