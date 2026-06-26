@@ -419,10 +419,21 @@ function manTick(v){ return (v/10000).toLocaleString()+'만'; }
 
 /* ── 데이터 조회 ── */
 async function fetchRange(fromDate, toDate){
+  const PAGE = 1000; // Supabase/PostgREST default max rows per request
   const url = `${SUPABASE_URL}/rest/v1/daily_han?select=*&date=gte.${fromDate}&date=lte.${toDate}&order=date.asc`;
-  const res = await fetch(url, { headers: HDR });
-  if(!res.ok){ const e = await res.json().catch(()=>({})); throw new Error(e.message || `HTTP ${res.status}`); }
-  return await res.json();
+  let all = [];
+  let offset = 0;
+  while(true){
+    const res = await fetch(url, {
+      headers: { ...HDR, 'Range-Unit': 'items', 'Range': `${offset}-${offset+PAGE-1}` }
+    });
+    if(!res.ok){ const e = await res.json().catch(()=>({})); throw new Error(e.message || `HTTP ${res.status}`); }
+    const page = await res.json();
+    all = all.concat(page);
+    if(page.length < PAGE) break; // last page reached
+    offset += PAGE;
+  }
+  return all;
 }
 
 let prevYearRows = [];
