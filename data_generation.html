@@ -202,10 +202,12 @@ tr:hover td { background: #f5f5f0; }
           <div class="form-field"><label>초진</label><input type="number" id="g-new" min="0" placeholder="0"></div>
           <div class="form-field"><label>재진</label><input type="number" id="g-return" min="0" placeholder="0"></div>
           <div class="form-field"><label>일매출 (원) <span style="color:#888780;font-weight:400;">- 자동계산</span></label><input type="number" id="g-revenue" min="0" placeholder="0" readonly style="background:#f5f5f0;color:#888780;"></div>
-          <div class="form-field"><label>현금 (원)</label><input type="number" id="g-cash" min="0" placeholder="0" oninput="recalcRevenue()"></div>
+          <div class="form-field"><label>현금 (원)</label><input type="number" id="g-cash" min="0" placeholder="0" oninput="recalcRevenue();recalcLeftmoney()"></div>
           <div class="form-field"><label>카드 (원)</label><input type="number" id="g-card" min="0" placeholder="0" oninput="recalcRevenue()"></div>
           <div class="form-field"><label>청구액 (원)</label><input type="number" id="g-claim" min="0" placeholder="0" oninput="recalcRevenue()"></div>
-          <div class="form-field"><label>입금액 (원)</label><input type="number" id="g-deposit" min="0" placeholder="0"></div>
+          <div class="form-field"><label>입금액 (원)</label><input type="number" id="g-deposit" min="0" placeholder="0" oninput="recalcLeftmoney()"></div>
+          <div class="form-field"><label>전날 보관현금 (원) <span id="g-prev-leftmoney-date" style="color:#888780;font-weight:400;"></span></label><input type="number" id="g-prev-leftmoney" min="0" placeholder="0" readonly style="background:#f5f5f0;color:#888780;"></div>
+          <div class="form-field"><label>예상 보관현금 (원) <span style="color:#888780;font-weight:400;">- 자동계산</span></label><input type="number" id="g-leftmoney" min="0" placeholder="0" readonly style="background:#f5f5f0;color:#888780;"></div>
         </div>
         <div class="form-actions">
           <button onclick="saveHangangDaily()">저장</button>
@@ -227,7 +229,7 @@ tr:hover td { background: #f5f5f0; }
           <table>
             <thead><tr>
               <th>날짜</th><th>요일</th><th class="num">환자</th><th class="num">초진</th><th class="num">재진</th>
-              <th class="num">매출</th><th class="num">현금</th><th class="num">카드</th><th class="num">청구액</th><th class="num">입금액</th><th></th>
+              <th class="num">매출</th><th class="num">현금</th><th class="num">카드</th><th class="num">청구액</th><th class="num">입금액</th><th class="num">보관현금</th><th></th>
             </tr></thead>
             <tbody id="gen-recent-tbody"></tbody>
           </table>
@@ -496,12 +498,13 @@ function showGenSubpage(name,el){
 }
 document.getElementById('g-date').addEventListener('change',function(){
   document.getElementById('g-dow').value=this.value?DOW[new Date(this.value).getDay()]:'';
+  loadPrevLeftmoney(this.value);
 });
 (function(){
   const t=new Date();
   const yd=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
   const gd=document.getElementById('g-date');
-  if(gd){ gd.value=yd; document.getElementById('g-dow').value=DOW[t.getDay()]; }
+  if(gd){ gd.value=yd; document.getElementById('g-dow').value=DOW[t.getDay()]; loadPrevLeftmoney(yd); }
 })();
 function recalcRevenue(){
   const cash = +(document.getElementById('g-cash').value || 0);
@@ -509,8 +512,36 @@ function recalcRevenue(){
   const claim = +(document.getElementById('g-claim').value || 0);
   document.getElementById('g-revenue').value = (cash + card + claim) || '';
 }
+/* 선택한 날짜 이전의 가장 최근 leftmoney(보관현금) 값을 daily_han 테이블에서 조회 */
+async function loadPrevLeftmoney(dateVal){
+  const prevEl=document.getElementById('g-prev-leftmoney');
+  const prevDateEl=document.getElementById('g-prev-leftmoney-date');
+  if(!dateVal){ prevEl.value=''; prevDateEl.textContent=''; recalcLeftmoney(); return; }
+  try{
+    const res=await fetch(`${SUPABASE_URL}/rest/v1/daily_han?select=date,leftmoney&date=lt.${dateVal}&leftmoney=not.is.null&order=date.desc&limit=1`,{headers:HDR});
+    const data=await res.json();
+    if(Array.isArray(data) && data.length && data[0].leftmoney!=null){
+      prevEl.value=data[0].leftmoney;
+      prevDateEl.textContent=`(${data[0].date} 기준)`;
+    }else{
+      prevEl.value='';
+      prevDateEl.textContent='(이전 기록 없음)';
+    }
+  }catch(e){
+    prevEl.value=''; prevDateEl.textContent='';
+  }
+  recalcLeftmoney();
+}
+/* 예상 보관현금 = 전날 보관현금 + 현금 - 입금액 */
+function recalcLeftmoney(){
+  const prev = +(document.getElementById('g-prev-leftmoney').value || 0);
+  const cash = +(document.getElementById('g-cash').value || 0);
+  const deposit = +(document.getElementById('g-deposit').value || 0);
+  document.getElementById('g-leftmoney').value = (prev + cash - deposit);
+}
 function clearHangangDailyForm(){
   ['g-total','g-new','g-return','g-revenue','g-cash','g-card','g-claim','g-deposit'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
+  recalcLeftmoney();
 }
 async function toggleMonthClose(){
   const panel = document.getElementById('month-close-panel');
@@ -558,7 +589,8 @@ async function saveHangangDaily(){
     total_patients:numOrNull('g-total'),new_patients:numOrNull('g-new'),
     return_patients:numOrNull('g-return'),daily_revenue:numOrNull('g-revenue'),
     cash:numOrNull('g-cash'),card:numOrNull('g-card'),
-    insurance_claim:numOrNull('g-claim'),deposit:numOrNull('g-deposit')};
+    insurance_claim:numOrNull('g-claim'),deposit:numOrNull('g-deposit'),
+    leftmoney:numOrNull('g-leftmoney')};
   if(dow==='일') ['total_patients','new_patients','return_patients','daily_revenue','cash','card','insurance_claim','deposit'].forEach(k=>payload[k]=null);
   loading(true);
   try{
@@ -573,7 +605,7 @@ async function loadGenRecent(){
     const res=await fetch(`${SUPABASE_URL}/rest/v1/daily_han?select=*&order=date.desc&limit=20`,{headers:HDR});
     const data=await res.json();
     const tbody=document.getElementById('gen-recent-tbody');
-    if(!Array.isArray(data)||!data.length){tbody.innerHTML='<tr><td colspan="11" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>';setStatus('✓ 연결됨','success');return;}
+    if(!Array.isArray(data)||!data.length){tbody.innerHTML='<tr><td colspan="12" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>';setStatus('✓ 연결됨','success');return;}
     tbody.innerHTML=data.map(r=>`<tr>
       <td>${r.date||''}</td><td>${r.day_of_week==='일'?'<span class="badge badge-sun">일</span>':(r.day_of_week||'')}</td>
       <td class="num">${r.total_patients??'-'}</td><td class="num">${r.new_patients??'-'}</td><td class="num">${r.return_patients??'-'}</td>
@@ -581,6 +613,7 @@ async function loadGenRecent(){
       <td class="num">${r.cash!=null?r.cash.toLocaleString():'-'}</td><td class="num">${r.card!=null?r.card.toLocaleString():'-'}</td>
       <td class="num">${r.insurance_claim!=null?r.insurance_claim.toLocaleString():'-'}</td>
       <td class="num">${r.deposit!=null?r.deposit.toLocaleString():'-'}</td>
+      <td class="num">${r.leftmoney!=null?r.leftmoney.toLocaleString():'-'}</td>
       <td><button class="danger" style="padding:3px 10px;font-size:12px;" onclick="deleteHangangDaily('${r.date}')">삭제</button></td>
     </tr>`).join('');
     setStatus('✓ 연결됨','success');
