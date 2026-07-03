@@ -208,6 +208,7 @@ tr:hover td { background: #f5f5f0; }
           <div class="form-field"><label>입금액 (원)</label><input type="number" id="g-deposit" min="0" placeholder="0" oninput="recalcLeftmoney()"></div>
           <div class="form-field"><label>전날 보관현금 (원) <span id="g-prev-leftmoney-date" style="color:#888780;font-weight:400;"></span></label><input type="number" id="g-prev-leftmoney" min="0" placeholder="0" readonly style="background:#f5f5f0;color:#888780;"></div>
           <div class="form-field"><label>예상 보관현금 (원) <span style="color:#888780;font-weight:400;">- 자동계산</span></label><input type="number" id="g-leftmoney" min="0" placeholder="0" readonly style="background:#f5f5f0;color:#888780;"></div>
+          <div class="form-field"><label>예상 내원환자수 <span style="color:#888780;font-weight:400;">- 자동계산(90일)</span></label><input type="number" id="g-expected-pt" min="0" placeholder="0" readonly style="background:#f5f5f0;color:#888780;"></div>
         </div>
         <div class="form-actions">
           <button onclick="saveHangangDaily()">저장</button>
@@ -223,35 +224,13 @@ tr:hover td { background: #f5f5f0; }
           <div id="month-close-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px,1fr)); gap:10px;"></div>
         </div>
       </div>
-      <div class="recent-card" style="margin-bottom:16px;">
-        <h2>예상 내원환자수
-          <span style="font-size:12px;font-weight:400;color:#888780;">(visits · next_visit_date 기준, 오늘 이후)</span>
-        </h2>
-        <div class="form-actions" style="margin-bottom:12px;">
-          <label style="font-size:12px;color:#888780;">조회 기간</label>
-          <select id="ev-range" style="width:auto;" onchange="loadExpectedVisits()">
-            <option value="7">앞으로 7일</option>
-            <option value="14" selected>앞으로 14일</option>
-            <option value="30">앞으로 30일</option>
-            <option value="60">앞으로 60일</option>
-          </select>
-          <button class="secondary" style="padding:5px 14px;font-size:12px;" onclick="loadExpectedVisits()">🔄 새로고침</button>
-          <span id="ev-total" style="font-size:13px;color:#444441;font-weight:500;"></span>
-        </div>
-        <div style="overflow-x:auto;">
-          <table>
-            <thead><tr><th>날짜</th><th>요일</th><th class="num">예상 인원</th></tr></thead>
-            <tbody id="ev-tbody"></tbody>
-          </table>
-        </div>
-      </div>
       <div class="recent-card">
         <h2>최근 입력 데이터 <span style="font-size:12px;font-weight:400;color:#888780;">(최근 20일 · daily_han)</span></h2>
         <div style="overflow-x:auto;">
           <table>
             <thead><tr>
               <th>날짜</th><th>요일</th><th class="num">환자</th><th class="num">초진</th><th class="num">재진</th>
-              <th class="num">매출</th><th class="num">현금</th><th class="num">카드</th><th class="num">청구액</th><th class="num">입금액</th><th class="num">보관현금</th><th></th>
+              <th class="num">매출</th><th class="num">현금</th><th class="num">카드</th><th class="num">청구액</th><th class="num">입금액</th><th class="num">보관현금</th><th class="num">예상환자</th><th></th>
             </tr></thead>
             <tbody id="gen-recent-tbody"></tbody>
           </table>
@@ -514,7 +493,7 @@ function showGenSubpage(name,el){
   document.querySelectorAll('#page-gen .subtab').forEach(t=>t.classList.remove('active'));
   document.getElementById('gensub-'+name).classList.add('active');
   el.classList.add('active');
-  if(name==='hangang-daily'){ loadGenRecent(); loadExpectedVisits(); }
+  if(name==='hangang-daily'){ loadGenRecent(); loadExpectedPt(document.getElementById('g-date').value); }
   if(name==='house-monthly'){ if(!document.getElementById('hm-han-revenue-rows').children.length) initHouseMonthlyForm(); loadHmRecent(); }
   if(name==='household-monthly'){
     renderAssetCategories();
@@ -525,12 +504,13 @@ function showGenSubpage(name,el){
 document.getElementById('g-date').addEventListener('change',function(){
   document.getElementById('g-dow').value=this.value?DOW[new Date(this.value).getDay()]:'';
   loadPrevLeftmoney(this.value);
+  loadExpectedPt(this.value);
 });
 (function(){
   const t=new Date();
   const yd=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
   const gd=document.getElementById('g-date');
-  if(gd){ gd.value=yd; document.getElementById('g-dow').value=DOW[t.getDay()]; loadPrevLeftmoney(yd); }
+  if(gd){ gd.value=yd; document.getElementById('g-dow').value=DOW[t.getDay()]; loadPrevLeftmoney(yd); loadExpectedPt(yd); }
 })();
 function recalcRevenue(){
   const cash = +(document.getElementById('g-cash').value || 0);
@@ -616,7 +596,8 @@ async function saveHangangDaily(){
     return_patients:numOrNull('g-return'),daily_revenue:numOrNull('g-revenue'),
     cash:numOrNull('g-cash'),card:numOrNull('g-card'),
     insurance_claim:numOrNull('g-claim'),deposit:numOrNull('g-deposit'),
-    leftmoney:numOrNull('g-leftmoney')};
+    leftmoney:numOrNull('g-leftmoney'),
+    expected_pt:numOrNull('g-expected-pt')};
   if(dow==='일') ['total_patients','new_patients','return_patients','daily_revenue','cash','card','insurance_claim','deposit'].forEach(k=>payload[k]=null);
   loading(true);
   try{
@@ -631,7 +612,7 @@ async function loadGenRecent(){
     const res=await fetch(`${SUPABASE_URL}/rest/v1/daily_han?select=*&order=date.desc&limit=20`,{headers:HDR});
     const data=await res.json();
     const tbody=document.getElementById('gen-recent-tbody');
-    if(!Array.isArray(data)||!data.length){tbody.innerHTML='<tr><td colspan="12" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>';setStatus('✓ 연결됨','success');return;}
+    if(!Array.isArray(data)||!data.length){tbody.innerHTML='<tr><td colspan="13" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>';setStatus('✓ 연결됨','success');return;}
     tbody.innerHTML=data.map(r=>`<tr>
       <td>${r.date||''}</td><td>${r.day_of_week==='일'?'<span class="badge badge-sun">일</span>':(r.day_of_week||'')}</td>
       <td class="num">${r.total_patients??'-'}</td><td class="num">${r.new_patients??'-'}</td><td class="num">${r.return_patients??'-'}</td>
@@ -640,6 +621,7 @@ async function loadGenRecent(){
       <td class="num">${r.insurance_claim!=null?r.insurance_claim.toLocaleString():'-'}</td>
       <td class="num">${r.deposit!=null?r.deposit.toLocaleString():'-'}</td>
       <td class="num">${r.leftmoney!=null?r.leftmoney.toLocaleString():'-'}</td>
+      <td class="num">${r.expected_pt!=null?r.expected_pt.toLocaleString():'-'}</td>
       <td><button class="danger" style="padding:3px 10px;font-size:12px;" onclick="deleteHangangDaily('${r.date}')">삭제</button></td>
     </tr>`).join('');
     setStatus('✓ 연결됨','success');
@@ -647,46 +629,34 @@ async function loadGenRecent(){
 }
 async function deleteHangangDaily(date){ if(!confirm(`${date} 삭제?`))return; try{ await fetch(`${SUPABASE_URL}/rest/v1/daily_han?date=eq.${date}`,{method:'DELETE',headers:HDR}); loadGenRecent(); }catch(e){} }
 
-/* ══ 예상 내원환자수 (management 프로젝트의 visits.next_visit_date 기준) ══ */
+/* ══ 예상 내원환자수 (management 프로젝트의 visits.next_visit_date 기준) ══
+   선택한 날짜(dateVal) 자신은 제외하고, 그 다음날부터 90일간의 예약 환자 수(중복 chart_no 제외)를 daily_han.expected_pt 에 저장 */
 function toYYMMDD(d){ return String(d.getFullYear()).slice(2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0'); }
-async function loadExpectedVisits(){
-  const tbody=document.getElementById('ev-tbody');
-  const totalEl=document.getElementById('ev-total');
-  if(!tbody) return;
-  const rangeDays = +(document.getElementById('ev-range')?.value || 14);
-  const today = new Date(); today.setHours(0,0,0,0);
-  const todayStr = toYYMMDD(today);
-  const endDate = new Date(today); endDate.setDate(endDate.getDate()+rangeDays);
-  const endStr = toYYMMDD(endDate);
-  tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#888780;padding:16px;">불러오는 중...</td></tr>';
+async function loadExpectedPt(dateVal){
+  const el=document.getElementById('g-expected-pt');
+  if(!el) return;
+  el.value='';
+  const baseDate = dateVal ? new Date(dateVal+'T00:00:00') : new Date();
+  baseDate.setHours(0,0,0,0);
+  const fromDate = new Date(baseDate); fromDate.setDate(fromDate.getDate()+1); // 선택일 제외, 다음날부터
+  const toDate = new Date(baseDate); toDate.setDate(toDate.getDate()+90);
+  const fromStr = toYYMMDD(fromDate);
+  const toStr = toYYMMDD(toDate);
   try{
-    const res = await fetch(`${MGMT_URL}/rest/v1/visits?select=chart_no,next_visit_date&next_visit_date=gte.${todayStr}&next_visit_date=lte.${endStr}&order=next_visit_date.asc&limit=3000`,{headers:MGMT_HDR});
+    const res = await fetch(`${MGMT_URL}/rest/v1/visits?select=chart_no,next_visit_date&next_visit_date=gte.${fromStr}&next_visit_date=lte.${toStr}&limit=5000`,{headers:MGMT_HDR});
     if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e.message||`HTTP ${res.status}`); }
     const rows = await res.json();
-    const counts={};
+    const seen={};
+    let count=0;
     rows.forEach(r=>{
-      const d = r.next_visit_date;
+      const d=r.next_visit_date;
       if(!d || !/^\d{6}$/.test(d)) return; // 'EMPTY' 등 날짜 아닌 값 제외
-      counts[d]=(counts[d]||0)+1;
+      if(seen[r.chart_no]) return; // 동일 환자 중복 제외
+      seen[r.chart_no]=true; count++;
     });
-    const dates = Object.keys(counts).sort();
-    if(!dates.length){
-      tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#888780;padding:16px;">예상 내원 데이터 없음</td></tr>';
-      totalEl.textContent='';
-      return;
-    }
-    let total=0;
-    tbody.innerHTML = dates.map(d=>{
-      const y=2000+parseInt(d.slice(0,2),10), mo=parseInt(d.slice(2,4),10), da=parseInt(d.slice(4,6),10);
-      const dow = DOW[new Date(y,mo-1,da).getDay()];
-      const cnt = counts[d]; total+=cnt;
-      const dispDate = `${y}-${String(mo).padStart(2,'0')}-${String(da).padStart(2,'0')}`;
-      return `<tr><td>${dispDate}</td><td>${dow==='일'?'<span class="badge badge-sun">일</span>':dow}</td><td class="num">${cnt}</td></tr>`;
-    }).join('');
-    totalEl.textContent = `기간 내 총 ${total}명 예상`;
+    el.value = count;
   }catch(e){
-    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:#a32d2d;padding:16px;">⚠ 불러오기 실패: ${e.message}</td></tr>`;
-    if(totalEl) totalEl.textContent='';
+    el.value=''; el.placeholder='조회 실패';
   }
 }
 
@@ -1458,7 +1428,7 @@ async function saveFinSection(kind){
 
 /* 초기 로드 */
 loadGenRecent();
-loadExpectedVisits();
+loadExpectedPt(document.getElementById('g-date').value);
 </script>
 
 </body>
