@@ -507,6 +507,7 @@ function showGenSubpage(name,el){
     loadAmRecent();
   }
 }
+let _leftmoneyManual=false;
 document.getElementById('g-date').addEventListener('change',function(){
   document.getElementById('g-dow').value=this.value?DOW[new Date(this.value).getDay()]:'';
   loadPrevLeftmoney(this.value);
@@ -548,7 +549,6 @@ async function loadPrevLeftmoney(dateVal){
 /* 보관현금 = 전날 보관현금 + 현금 - 입금액 (자동계산). 사용자가 직접 값을 수정하면
    실사금액 우선을 위해 그 이후 현금/입금액 변경으로는 덮어쓰지 않는다.
    재계산 버튼(force=true) 또는 날짜 변경 시에만 자동계산 값으로 되돌린다. */
-let _leftmoneyManual=false;
 function markLeftmoneyManual(){
   _leftmoneyManual=true;
   const tag=document.getElementById('g-leftmoney-tag');
