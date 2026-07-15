@@ -427,6 +427,16 @@ tr:hover td { background: #f5f5f0; }
             </div>
           </div>
 
+          <!-- 이번달 메모 -->
+          <div class="asset-section" style="margin-top:12px;">
+            <h3>📝 이번달 Memo</h3>
+            <textarea id="am-memo" rows="3" placeholder="이번 달 메모를 입력하세요" style="width:100%;box-sizing:border-box;padding:8px 10px;font-size:13px;font-family:inherit;border:1px solid #ddddd5;border-radius:6px;resize:vertical;"></textarea>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+              <button style="padding:5px 14px;font-size:13px;" onclick="saveHouseholdMemo()">메모 저장</button>
+              <span id="am-memo-msg" class="form-msg"></span>
+            </div>
+          </div>
+
         </div><!-- /11조선교헌금예비비 -->
       </div><!-- /ie-form-card -->
 
@@ -439,6 +449,7 @@ tr:hover td { background: #f5f5f0; }
               <th class="num">정기예금</th><th class="num">노란우산</th><th class="num">보증금</th>
               <th class="num">퇴직연금</th><th class="num">연금보험</th>
               <th class="num">A.현금</th><th class="num">B.장기현금</th><th class="num">C.연금성</th><th class="num">D.총합</th>
+              <th>메모</th>
               <th></th>
             </tr></thead>
             <tbody id="am-recent-tbody"></tbody>
@@ -1141,6 +1152,7 @@ function initAssetMonthlyForm(){
     addAssetRow(c.key,`${c.label}(h)`);
     addAssetRow(c.key,`${c.label}(s)`);
   });
+  const memoElI=document.getElementById('am-memo'); if(memoElI) memoElI.value='';
   calcAllAssetTotals();
 }
 
@@ -1163,9 +1175,11 @@ async function loadAssetMonthly(filterId){
         if(rows.length) rows.forEach(row=>addAssetRow(c.key,row.name,row.amount,row.date,row.note));
         else { addAssetRow(c.key,`${c.label}(h)`); addAssetRow(c.key,`${c.label}(s)`); }
       });
+      const memoElL=document.getElementById('am-memo'); if(memoElL) memoElL.value=r.memo||'';
       showMsg('am-form-msg','✓ 불러오기 완료',true);
     }else{
       /* 이번 달 없음 → 이전 달 자료 가져와서 항목명/비고 유지, 금액·날짜 초기화 */
+      const memoElN=document.getElementById('am-memo'); if(memoElN) memoElN.value='';
       const prevMonth=prevM(month);
       const prevRes=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=*&year_month=eq.${prevMonth}&order=id.asc`,{headers:HDR});
       const prevData=await prevRes.json();
@@ -1226,21 +1240,51 @@ async function saveAssetCategory(catKey){
   finally{ loading(false); }
 }
 
+async function saveHouseholdMemo(){
+  const month=document.getElementById('am-month').value;
+  if(!month){ showMsg('am-memo-msg','입력 월을 선택하세요.',false); return; }
+  const memo=document.getElementById('am-memo').value;
+
+  loading(true);
+  try{
+    const prev=await fetchMonthRecord(month);
+    const fields={ memo };
+
+    let res;
+    if(prev && prev.id!=null){
+      res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?id=eq.${prev.id}`,{method:'PATCH',headers:HDR,body:JSON.stringify(fields)});
+    }else if(prev){
+      res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?year_month=eq.${month}`,{method:'PATCH',headers:HDR,body:JSON.stringify(fields)});
+    }else{
+      res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house`,{method:'POST',headers:HDR,body:JSON.stringify({year_month:month,...fields})});
+    }
+    if(!res.ok){ const e=await res.json(); throw new Error(e.message||`HTTP ${res.status}`); }
+
+    showMsg('am-memo-msg','✓ 메모 저장 완료!',true);
+    setStatus(`✓ ${month} 메모 저장됨`,'success');
+    loadAmRecent();
+  }catch(e){ showMsg('am-memo-msg','오류: '+e.message,false); }
+  finally{ loading(false); }
+}
+
 async function loadAmRecent(){
   try{
     const res=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=*&order=year_month.desc&limit=12`,{headers:HDR});
     const data=await res.json();
     const tbody=document.getElementById('am-recent-tbody');
     if(!tbody) return;
-    if(!Array.isArray(data)||!data.length){ tbody.innerHTML='<tr><td colspan="14" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>'; return; }
+    if(!Array.isArray(data)||!data.length){ tbody.innerHTML='<tr><td colspan="15" style="text-align:center;color:#888780;padding:20px;">데이터 없음</td></tr>'; return; }
     tbody.innerHTML=data.map(r=>{
       const idArg = r.id!=null ? `'${r.id}'` : 'null';
       const cells = ASSET_CATS.map(c=>`<td class="num">${r[c.totalCol]!=null?fmt(r[c.totalCol]):'-'}</td>`).join('');
       const abcd = ['a_cash','b_longterm','c_pension','d_total'].map(k=>`<td class="num">${r[k]!=null?fmt(r[k]):'-'}</td>`).join('');
+      const memoText = r.memo ? escapeHtml(r.memo) : '';
+      const memoCell = `<td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${memoText}">${memoText||'-'}</td>`;
       return `<tr>
         <td>${r.year_month||''}</td>
         ${cells}
         ${abcd}
+        ${memoCell}
         <td style="white-space:nowrap;">
           <button class="secondary" style="padding:3px 10px;font-size:12px;margin-right:4px;" onclick="editAssetMonthly(${idArg},'${r.year_month}')">편집</button>
           <button class="danger" style="padding:3px 10px;font-size:12px;" onclick="deleteHouseMonthly(${idArg},'${r.year_month}')">삭제</button>

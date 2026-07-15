@@ -1150,6 +1150,7 @@ function kRowToFlat(r){
     income_total: kIncomeTotal(r),
     mission_total: kNum(r,'mission_total'), reserve_total: kNum(r,'reserve_total'),
     reserve_h: kNum(r,'reserve_h'), reserve_s: kNum(r,'reserve_s'), jo11: kNum(r,'11jo'),
+    memo: r.memo || '',
   };
 }
 
@@ -1209,6 +1210,7 @@ function renderKYear(){
       han_revenue: hanRevSum, sarang_revenue: sarRevSum, han_net: hanNetSum, sarang_net: sarNetSum,
       income_total: incomeSum, mission_total: missionSum, reserve_total: reserveSum,
       reserve_h: kNum(last,'reserve_h'), reserve_s: kNum(last,'reserve_s'), jo11: kNum(last,'11jo'),
+      memo: last.memo || '',
     };
   });
   const latest = flat.length ? flat[flat.length-1] : null;
@@ -1249,6 +1251,7 @@ function buildKTable(flat, keyName, keyLabel){
     {key:'reserve_h', label:'한강예비비', type:'num'},
     {key:'reserve_s', label:'사랑예비비', type:'num'},
     {key:'jo11', label:'11조', type:'num'},
+    {key:'memo', label:'메모', type:'memo'},
   ];
   kDetailRows = flat;
   kSortState = {key:null, dir:1};
@@ -1310,10 +1313,16 @@ function renderKDetailTable(){
     return '<tr>' + kDetailCols.map(c=>{
       const v = r[c.key];
       if(c.type==='num') return `<td>${v!=null?won(v):'-'}</td>`;
+      if(c.type==='memo'){
+        const text = v ? escapeHtml(v) : '';
+        return `<td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${text}">${text||'-'}</td>`;
+      }
       return `<td>${v!=null?v:'-'}</td>`;
     }).join('') + '</tr>';
   }).join('');
 }
+
+function escapeHtml(s){ return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function sortKDetail(key){
   if(kSortState.key===key){ kSortState.dir *= -1; } else { kSortState = {key, dir:1}; }
