@@ -1167,19 +1167,24 @@ async function loadAssetMonthly(filterId){
     const res=await fetch(url,{headers:HDR});
     const data=await res.json();
     clearAssetRows();
-    if(Array.isArray(data) && data.length){
-      /* 이번 달 데이터 존재 → 그대로 불러오기 */
-      const r=data[0];
+    const cur = (Array.isArray(data) && data.length) ? data[0] : null;
+    /* 병원한달통계 저장 등으로 이번 달 레코드 자체는 이미 있어도
+       가계 자산(통장/주식/적금 등) 항목은 아직 하나도 저장되지 않았을 수 있다.
+       이 경우에도 "이번 달 자료 없음"으로 간주해 이전 달 자료를 불러온다. */
+    const curHasAssetData = !!cur && ASSET_CATS.some(c=>{ const v=cur[c.detailCol]; return v && String(v).trim(); });
+    if(cur && curHasAssetData){
+      /* 이번 달 자산 데이터 존재 → 그대로 불러오기 */
       ASSET_CATS.forEach(c=>{
-        const rows=parseAssetItemsText(r[c.detailCol]);
+        const rows=parseAssetItemsText(cur[c.detailCol]);
         if(rows.length) rows.forEach(row=>addAssetRow(c.key,row.name,row.amount,row.date,row.note));
         else { addAssetRow(c.key,`${c.label}(h)`); addAssetRow(c.key,`${c.label}(s)`); }
       });
-      const memoElL=document.getElementById('am-memo'); if(memoElL) memoElL.value=r.memo||'';
+      const memoElL=document.getElementById('am-memo'); if(memoElL) memoElL.value=cur.memo||'';
       showMsg('am-form-msg','✓ 불러오기 완료',true);
     }else{
-      /* 이번 달 없음 → 이전 달 자료 가져와서 항목명/비고 유지, 금액·날짜 초기화 */
-      const memoElN=document.getElementById('am-memo'); if(memoElN) memoElN.value='';
+      /* 이번 달 자산 데이터 없음 → 이전 달 자료(항목명·금액·비고)를 그대로 불러와
+         수정 후 이번 달로 저장할 수 있게 함 */
+      const memoElN=document.getElementById('am-memo'); if(memoElN) memoElN.value=cur?.memo||'';
       const prevMonth=prevM(month);
       const prevRes=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=*&year_month=eq.${prevMonth}&order=id.asc`,{headers:HDR});
       const prevData=await prevRes.json();
@@ -1187,10 +1192,10 @@ async function loadAssetMonthly(filterId){
         const pr=prevData[0];
         ASSET_CATS.forEach(c=>{
           const rows=parseAssetItemsText(pr[c.detailCol]);
-          if(rows.length) rows.forEach(row=>addAssetRow(c.key,row.name,0,'',row.note));
+          if(rows.length) rows.forEach(row=>addAssetRow(c.key,row.name,row.amount,'',row.note));
           else { addAssetRow(c.key,`${c.label}(h)`); addAssetRow(c.key,`${c.label}(s)`); }
         });
-        showMsg('am-form-msg',`✓ ${prevMonth} 항목 불러옴 — 금액을 입력 후 저장하세요`,true);
+        showMsg('am-form-msg',`✓ ${prevMonth} 자료 불러옴 — 수정 후 저장하세요`,true);
       }else{
         initAssetMonthlyForm();
         showMsg('am-form-msg','데이터 없음 (새로 입력)',true);
