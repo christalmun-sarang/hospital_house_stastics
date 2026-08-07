@@ -358,6 +358,7 @@ tr:hover td { background: #f5f5f0; }
           <label>입력 월:</label>
           <input type="month" id="am-month" style="width:auto;">
           <button class="secondary" onclick="loadAssetMonthly()">불러오기</button>
+          <button class="secondary" onclick="loadPrevAssetMonthly()">이전달 불러오기</button>
           <span id="am-form-msg" class="form-msg"></span>
         </div>
 
@@ -1203,6 +1204,36 @@ async function loadAssetMonthly(filterId){
     }
     calcAllAssetTotals();
     await loadFinSections(month, prevM(month));
+  }catch(e){ showMsg('am-form-msg','오류: '+e.message,false); }
+  finally{ loading(false); }
+}
+
+/* 입력 월(예: 7월)에 이미 데이터가 있어도, 언제든 클릭해서
+   이전 달(예: 6월) 통장/주식/적금 등 항목명·금액·비고를 강제로 불러와
+   수정 후 현재 입력 월로 저장할 수 있게 하는 버튼용 함수 */
+async function loadPrevAssetMonthly(){
+  const month=document.getElementById('am-month').value;
+  if(!month){ showMsg('am-form-msg','입력 월을 선택하세요.',false); return; }
+  const prevMonth=prevM(month);
+  if(!confirm(`${prevMonth} 자료를 불러와 현재 화면의 통장/주식/적금 등 항목을 덮어씁니다.\n(예비비·선교헌금·메모는 영향 없음)\n계속할까요?`)) return;
+
+  loading(true);
+  try{
+    const prevRes=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=*&year_month=eq.${prevMonth}&order=id.asc`,{headers:HDR});
+    const prevData=await prevRes.json();
+    if(Array.isArray(prevData) && prevData.length){
+      const pr=prevData[0];
+      clearAssetRows();
+      ASSET_CATS.forEach(c=>{
+        const rows=parseAssetItemsText(pr[c.detailCol]);
+        if(rows.length) rows.forEach(row=>addAssetRow(c.key,row.name,row.amount,'',row.note));
+        else { addAssetRow(c.key,`${c.label}(h)`); addAssetRow(c.key,`${c.label}(s)`); }
+      });
+      calcAllAssetTotals();
+      showMsg('am-form-msg',`✓ ${prevMonth} 자료 불러옴 — 수정 후 ${month}로 저장하세요`,true);
+    }else{
+      showMsg('am-form-msg',`${prevMonth} 데이터가 없습니다.`,false);
+    }
   }catch(e){ showMsg('am-form-msg','오류: '+e.message,false); }
   finally{ loading(false); }
 }
