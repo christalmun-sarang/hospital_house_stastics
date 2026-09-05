@@ -85,6 +85,8 @@ button.add-btn:hover { background: #e6f1fb; }
 .ie-row input[type=number] { text-align: right; font-variant-numeric: tabular-nums; }
 .ie-row .del-btn { background: none; border: none; color: #ccc; font-size: 16px; cursor: pointer; padding: 0; }
 .ie-row .del-btn:hover { color: #a32d2d; }
+.ie-row .move-btn { background: none; border: none; color: #b4b2a9; font-size: 11px; cursor: pointer; padding: 0; line-height: 1; }
+.ie-row .move-btn:hover { color: #185fa5; }
 
 .am-row { display: grid; grid-template-columns: 1fr 130px 145px 1fr 28px; gap: 6px; align-items: center; margin-bottom: 7px; }
 .am-row .am-amount { text-align: right; font-variant-numeric: tabular-nums; }
@@ -701,15 +703,30 @@ function addHmRow(clinic,kind,name='',amount='',note='',rowId=null){
   const wrap=document.createElement('div');
   wrap.className='ie-row';
   wrap.id=rowId;
-  wrap.style.gridTemplateColumns='1fr 140px 160px 28px';
+  wrap.style.gridTemplateColumns='1fr 140px 160px 20px 20px 28px';
   const amountDisplay = (amount!==''&&amount!=null&&amount!==0) ? formatHmNumber(amount) : (amount===0? '0':'');
   wrap.innerHTML=`
     <input type="text" class="hm-name" placeholder="항목명" value="${escapeHtml(name)}">
     <input type="text" inputmode="numeric" class="hm-amount" placeholder="0" value="${amountDisplay}" oninput="onHmAmountInput(this)">
     <input type="text" class="note-input hm-note" placeholder="비고" value="${escapeHtml(note)}">
+    <button class="move-btn" title="위로" onclick="moveHmRow('${rowId}',-1)">▲</button>
+    <button class="move-btn" title="아래로" onclick="moveHmRow('${rowId}',1)">▼</button>
     <button class="del-btn" onclick="document.getElementById('${rowId}').remove(); calcHmTotals();">✕</button>`;
   container.appendChild(wrap);
   calcHmTotals();
+}
+
+/* 항목 순서 변경: dir=-1(위로), dir=1(아래로). 저장 시 순서는 화면(DOM) 순서를 그대로 따름 */
+function moveHmRow(rowId,dir){
+  const el=document.getElementById(rowId);
+  if(!el) return;
+  if(dir===-1){
+    const prev=el.previousElementSibling;
+    if(prev) el.parentNode.insertBefore(el,prev);
+  }else{
+    const next=el.nextElementSibling;
+    if(next) el.parentNode.insertBefore(next,el);
+  }
 }
 
 function formatHmNumber(val){
@@ -917,6 +934,49 @@ function parseItemsText(text,kind){
   return rows;
 }
 
+/* 한강/사랑 각 클리닉을 독립적으로 채워주는 헬퍼.
+   - 이번 달 레코드(cur)에 해당 클리닉 항목(h_items/s_items)이 있으면 그대로 사용.
+   - 없으면(다른 클리닉만 먼저 저장돼서 레코드는 있지만 이 클리닉은 비어있는 경우 포함)
+     이전 달 레코드에서 그 클리닉 항목만 대신 불러옴.
+   - 이전 달에도 없으면 기본 항목(금액 0)으로 채움. */
+async function loadHmClinic(clinic, itemsKey, cur, getPrevRecord){
+  const curItems = cur ? cur[itemsKey] : null;
+  let revRows=parseItemsText(curItems,'revenue');
+  let expRows=parseItemsText(curItems,'expense');
+  let revSavedAt=parseSavedAt(curItems,'revenue');
+  let expSavedAt=parseSavedAt(curItems,'expense');
+  let usedPrevMonth=null;
+
+  if(!revRows.length && !expRows.length){
+    const prev=await getPrevRecord();
+    const prevItems = prev ? prev[itemsKey] : null;
+    const pRev=parseItemsText(prevItems,'revenue');
+    const pExp=parseItemsText(prevItems,'expense');
+    if(pRev.length || pExp.length){
+      revRows=pRev; expRows=pExp;
+      revSavedAt=null; expSavedAt=null;
+      usedPrevMonth=prev._month;
+    }
+  }
+
+  document.getElementById(`hm-${clinic}-rev-lastsaved`).textContent='최종저장: '+(revSavedAt||'-');
+  document.getElementById(`hm-${clinic}-exp-lastsaved`).textContent='최종저장: '+(expSavedAt||'-');
+  const fillSd=(id,val)=>{
+    const el=document.getElementById(id); if(!el) return;
+    if(val && /^\d{4}-\d{2}-\d{2}$/.test(val)) el.value=val;
+    else if(usedPrevMonth) el.value=todayDateStr();
+  };
+  fillSd(`hm-${clinic}-rev-savedate`,revSavedAt);
+  fillSd(`hm-${clinic}-exp-savedate`,expSavedAt);
+
+  if(revRows.length) revRows.forEach(row=>addHmRow(clinic,'revenue',row.name,row.amount,row.note));
+  else { addHmRow(clinic,'revenue','현금입금'); addHmRow(clinic,'revenue','카드입금'); addHmRow(clinic,'revenue','공단입금'); }
+  if(expRows.length) expRows.forEach(row=>addHmRow(clinic,'expense',row.name,row.amount,row.note));
+  else { addHmRow(clinic,'expense','상가월세'); addHmRow(clinic,'expense','직원월급'); addHmRow(clinic,'expense','퇴직금'); addHmRow(clinic,'expense','예비비'); }
+
+  return usedPrevMonth; // null이면 이번달(or 기본값) 그대로, 문자열이면 그 달 데이터로 대체됨
+}
+
 async function loadHouseMonthly(filterId){
   const month=document.getElementById('hm-month').value;
   if(!month){ showMsg('hm-form-msg','입력 월을 선택하세요.',false); return; }
@@ -928,66 +988,33 @@ async function loadHouseMonthly(filterId){
     const res=await fetch(url,{headers:HDR});
     const data=await res.json();
     clearHmRows();
-    if(Array.isArray(data) && data.length){
-      const r=data[0];
-      const hanRevRows=parseItemsText(r.h_items,'revenue');
-      const hanExpRows=parseItemsText(r.h_items,'expense');
-      const sarRevRows=parseItemsText(r.s_items,'revenue');
-      const sarExpRows=parseItemsText(r.s_items,'expense');
-      const hanRevSavedAt=parseSavedAt(r.h_items,'revenue');
-      const hanExpSavedAt=parseSavedAt(r.h_items,'expense');
-      const sarRevSavedAt=parseSavedAt(r.s_items,'revenue');
-      const sarExpSavedAt=parseSavedAt(r.s_items,'expense');
-      document.getElementById('hm-han-rev-lastsaved').textContent='최종저장: '+(hanRevSavedAt||'-');
-      document.getElementById('hm-han-exp-lastsaved').textContent='최종저장: '+(hanExpSavedAt||'-');
-      document.getElementById('hm-sarang-rev-lastsaved').textContent='최종저장: '+(sarRevSavedAt||'-');
-      document.getElementById('hm-sarang-exp-lastsaved').textContent='최종저장: '+(sarExpSavedAt||'-');
-      // 저장일 input에도 기존 저장일 채우기 (YYYY-MM-DD 형식만 date input에 호환)
-      const fillSd=(id,val)=>{ const el=document.getElementById(id); if(el && val && /^\d{4}-\d{2}-\d{2}$/.test(val)) el.value=val; };
-      fillSd('hm-han-rev-savedate',hanRevSavedAt);
-      fillSd('hm-han-exp-savedate',hanExpSavedAt);
-      fillSd('hm-sarang-rev-savedate',sarRevSavedAt);
-      fillSd('hm-sarang-exp-savedate',sarExpSavedAt);
-      if(hanRevRows.length) hanRevRows.forEach(row=>addHmRow('han','revenue',row.name,row.amount,row.note));
-      else { addHmRow('han','revenue','현금입금'); addHmRow('han','revenue','카드입금'); addHmRow('han','revenue','공단입금'); }
-      if(hanExpRows.length) hanExpRows.forEach(row=>addHmRow('han','expense',row.name,row.amount,row.note));
-      else { addHmRow('han','expense','상가월세'); addHmRow('han','expense','직원월급'); }
-      if(sarRevRows.length) sarRevRows.forEach(row=>addHmRow('sarang','revenue',row.name,row.amount,row.note));
-      else { addHmRow('sarang','revenue','현금입금'); addHmRow('sarang','revenue','카드입금'); addHmRow('sarang','revenue','공단입금'); }
-      if(sarExpRows.length) sarExpRows.forEach(row=>addHmRow('sarang','expense',row.name,row.amount,row.note));
-      else { addHmRow('sarang','expense','상가월세'); addHmRow('sarang','expense','직원월급'); }
-      showMsg('hm-form-msg','✓ 불러오기 완료',true);
+
+    const cur = (Array.isArray(data) && data.length) ? data[0] : null;
+    const prevMonth=prevM(month);
+    let prevRecord; // undefined=아직 조회 안 함, null=조회했지만 없음
+    const getPrevRecord = async () => {
+      if(prevRecord===undefined){
+        const prevRes=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=h_items,s_items&year_month=eq.${prevMonth}&order=id.asc`,{headers:HDR});
+        const prevData=await prevRes.json();
+        prevRecord = (Array.isArray(prevData)&&prevData.length) ? {...prevData[0], _month:prevMonth} : null;
+      }
+      return prevRecord;
+    };
+
+    const hanUsedPrev = await loadHmClinic('han','h_items',cur,getPrevRecord);
+    const sarUsedPrev = await loadHmClinic('sarang','s_items',cur,getPrevRecord);
+
+    if(!cur && prevRecord===null){
+      initHouseMonthlyForm();
+      showMsg('hm-form-msg','데이터 없음 (새로 입력)',true);
     }else{
-      /* 이번 달 없음 → 이전 달 데이터 그대로 불러오기 (항목·금액·비고 유지) */
-      const prevMonth=prevM(month);
-      const prevRes=await fetch(`${SUPABASE_URL}/rest/v1/monthly_house?select=h_items,s_items&year_month=eq.${prevMonth}&order=id.asc`,{headers:HDR});
-      const prevData=await prevRes.json();
-      if(Array.isArray(prevData)&&prevData.length){
-        const pr=prevData[0];
-        const pHanRev=parseItemsText(pr.h_items,'revenue');
-        const pHanExp=parseItemsText(pr.h_items,'expense');
-        const pSarRev=parseItemsText(pr.s_items,'revenue');
-        const pSarExp=parseItemsText(pr.s_items,'expense');
-        if(pHanRev.length) pHanRev.forEach(row=>addHmRow('han','revenue',row.name,row.amount,row.note));
-        else { addHmRow('han','revenue','현금입금'); addHmRow('han','revenue','카드입금'); addHmRow('han','revenue','공단입금'); }
-        if(pHanExp.length) pHanExp.forEach(row=>addHmRow('han','expense',row.name,row.amount,row.note));
-        else { addHmRow('han','expense','상가월세'); addHmRow('han','expense','직원월급'); addHmRow('han','expense','퇴직금'); addHmRow('han','expense','예비비'); }
-        if(pSarRev.length) pSarRev.forEach(row=>addHmRow('sarang','revenue',row.name,row.amount,row.note));
-        else { addHmRow('sarang','revenue','현금입금'); addHmRow('sarang','revenue','카드입금'); addHmRow('sarang','revenue','공단입금'); }
-        if(pSarExp.length) pSarExp.forEach(row=>addHmRow('sarang','expense',row.name,row.amount,row.note));
-        else { addHmRow('sarang','expense','상가월세'); addHmRow('sarang','expense','직원월급'); addHmRow('sarang','expense','퇴직금'); addHmRow('sarang','expense','예비비'); }
-        /* 저장일은 오늘로 초기화 */
-        const today=todayDateStr();
-        ['hm-han-rev-savedate','hm-han-exp-savedate','hm-sarang-rev-savedate','hm-sarang-exp-savedate'].forEach(id=>{
-          const el=document.getElementById(id); if(el) el.value=today;
-        });
-        ['hm-han-rev-lastsaved','hm-han-exp-lastsaved','hm-sarang-rev-lastsaved','hm-sarang-exp-lastsaved'].forEach(id=>{
-          const el=document.getElementById(id); if(el) el.textContent='최종저장: -';
-        });
-        showMsg('hm-form-msg',`✓ ${prevMonth} 데이터 불러옴 — 수정 후 저장하세요`,true);
+      const usedNames=[];
+      if(hanUsedPrev) usedNames.push('한강');
+      if(sarUsedPrev) usedNames.push('사랑');
+      if(usedNames.length){
+        showMsg('hm-form-msg',`✓ ${usedNames.join(', ')} — ${prevMonth} 데이터 불러옴, 수정 후 저장하세요`,true);
       }else{
-        initHouseMonthlyForm();
-        showMsg('hm-form-msg','데이터 없음 (새로 입력)',true);
+        showMsg('hm-form-msg','✓ 불러오기 완료',true);
       }
     }
     calcHmTotals();
